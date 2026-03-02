@@ -741,16 +741,37 @@ async def upload_dataset(
     async with aiofiles.open(file_path, 'wb') as f:
         await f.write(content)
     
-    # Validate content
+    # Validate content - more flexible validation
     validation_status = "pending"
     try:
+        # Try different encodings
+        decoded_content = None
+        for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+            try:
+                decoded_content = content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if decoded_content is None:
+            decoded_content = content.decode('utf-8', errors='replace')
+        
         if file_ext == '.csv':
-            reader = csv.reader(io.StringIO(content.decode('utf-8')))
+            # Detect delimiter
+            first_line = decoded_content.split('\n')[0] if decoded_content else ''
+            delimiter = ','
+            if first_line.count(';') > first_line.count(','):
+                delimiter = ';'
+            elif first_line.count('\t') > first_line.count(','):
+                delimiter = '\t'
+            
+            reader = csv.reader(io.StringIO(decoded_content), delimiter=delimiter)
             rows = list(reader)
-            if len(rows) > 0:
+            non_empty_rows = [r for r in rows if any(cell.strip() for cell in r)]
+            if len(non_empty_rows) > 0:
                 validation_status = "valid"
         elif file_ext == '.json':
-            json.loads(content.decode('utf-8'))
+            json.loads(decoded_content)
             validation_status = "valid"
     except Exception as e:
         validation_status = "invalid"
