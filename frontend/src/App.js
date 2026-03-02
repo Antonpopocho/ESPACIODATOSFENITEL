@@ -14,6 +14,7 @@ import MyEvidence from './pages/MyEvidence';
 import Datasets from './pages/Datasets';
 import Governance from './pages/Governance';
 import Audit from './pages/Audit';
+import Documentation from './pages/Documentation';
 import { Loader2 } from 'lucide-react';
 
 // Protected Route Component
