@@ -79,6 +79,7 @@ function AppRoutes() {
       <Route path="/datasets" element={<ProtectedRoute requirePromotor><Datasets /></ProtectedRoute>} />
       <Route path="/governance" element={<ProtectedRoute requirePromotor><Governance /></ProtectedRoute>} />
       <Route path="/audit" element={<ProtectedRoute requirePromotor><Audit /></ProtectedRoute>} />
+      <Route path="/documentation" element={<ProtectedRoute requirePromotor><Documentation /></ProtectedRoute>} />
 
       {/* Default redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
