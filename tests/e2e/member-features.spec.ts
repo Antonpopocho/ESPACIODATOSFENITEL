@@ -14,7 +14,8 @@ test.describe('Member Contract Flow', () => {
 
   test('Sign contract button is visible for unsigned contract', async ({ page }) => {
     await page.goto('/my-contract');
-    // The demo member starts with unsigned contract
+    // Wait for loading to complete - contract content should appear
+    await expect(page.locator('.bg-slate-50.rounded-lg').first()).toBeVisible();
     // Either sign button or download button should be visible
     const signBtn = page.getByTestId('sign-contract-button');
     const downloadBtn = page.getByTestId('download-contract-button');
