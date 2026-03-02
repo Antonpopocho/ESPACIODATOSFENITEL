@@ -29,10 +29,12 @@ test.describe('Member Contract Flow', () => {
     await expect(page.getByRole('heading', { name: /contrato de adhes/i })).toBeVisible();
   });
 
-  test('Contract page shows payment status', async ({ page }) => {
+  test('Contract page shows payment status section', async ({ page }) => {
     await page.goto('/my-contract');
-    // Payment status section should be visible
-    await expect(page.getByRole('heading', { name: /estado del pago/i })).toBeVisible();
+    // Wait for contract content to load
+    await expect(page.locator('.bg-slate-50.rounded-lg').first()).toBeVisible();
+    // Payment status card should be visible (contains "Estado del Pago" text in CardTitle)
+    await expect(page.getByText('Estado del Pago')).toBeVisible();
   });
 });
 
