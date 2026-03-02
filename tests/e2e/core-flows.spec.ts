@@ -16,9 +16,13 @@ test.describe('Core Auth Flows', () => {
 
   test('Login with invalid credentials shows error', async ({ page }) => {
     await page.goto('/login');
-    await page.getByTestId('login-email-input').fill('wrong@email.com');
+    await page.getByTestId('login-email-input').fill('notexist@invalid.com');
     await page.getByTestId('login-password-input').fill('WrongPass123!');
-    await page.getByTestId('login-submit-button').click();
+    const [response] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/auth/login')),
+      page.getByTestId('login-submit-button').click(),
+    ]);
+    expect(response.status()).toBe(401);
     await expect(page.getByTestId('login-error')).toBeVisible();
   });
 
