@@ -1,72 +1,1159 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Request, BackgroundTasks
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import bcrypt
+import hashlib
+import json
+import csv
+import io
+import zipfile
+import aiofiles
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Storage paths
+STORAGE_DIR = Path("/app/storage")
+DATASETS_DIR = STORAGE_DIR / "datasets"
+CONTRACTS_DIR = STORAGE_DIR / "contracts"
+EVIDENCE_DIR = STORAGE_DIR / "evidence"
+EXPORTS_DIR = STORAGE_DIR / "exports"
+
+# Create directories
+for d in [DATASETS_DIR, CONTRACTS_DIR, EVIDENCE_DIR, EXPORTS_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# JWT Configuration
+JWT_SECRET = os.environ.get('JWT_SECRET', 'fenitel-data-space-secret-key-2025')
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
 
-# Create a router with the /api prefix
+app = FastAPI(title="FENITEL Espacio de Datos", version="1.0.0")
 api_router = APIRouter(prefix="/api")
+security = HTTPBearer()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+# ==================== MODELS ====================
+
+class UserRole:
+    PROMOTOR = "promotor"
+    MIEMBRO = "miembro"
+    PROVEEDOR = "proveedor"
+
+class IncorporationStatus:
+    PENDING_CONTRACT = "pending_contract"
+    PENDING_PAYMENT = "pending_payment"
+    PENDING_IDENTITY = "pending_identity"
+    EFFECTIVE = "effective"
+
+class UserBase(BaseModel):
+    email: EmailStr
+    name: str
+    organization: str
+    nif: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class UserCreate(UserBase):
+    password: str
+    role: str = UserRole.MIEMBRO
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    email: str
+    name: str
+    organization: str
+    nif: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    role: str
+    incorporation_status: str
+    contract_signed: bool
+    payment_status: str
+    identity_evidence_id: Optional[str] = None
+    created_at: str
+    is_provider: bool = False
+
+class ContractResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    signed_at: Optional[str] = None
+    signature_hash: Optional[str] = None
+    status: str
+    pdf_path: Optional[str] = None
+
+class DatasetCreate(BaseModel):
+    title: str
+    description: str
+    keywords: List[str] = []
+    category: str = "general"
+    license: str = "CC-BY-4.0"
+    access_rights: str = "restricted"
+
+class DatasetResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    title: str
+    description: str
+    keywords: List[str]
+    category: str
+    license: str
+    access_rights: str
+    file_path: str
+    file_type: str
+    file_size: int
+    version: int
+    status: str
+    validation_status: str
+    publication_evidence_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+    dcat_metadata: Dict[str, Any]
+
+class EvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    evidence_type: str
+    hash: str
+    timestamp: str
+    pdf_path: str
+    metadata: Dict[str, Any]
+
+class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    user_email: str
+    action: str
+    resource_type: str
+    resource_id: Optional[str]
+    ip_address: str
+    details: Dict[str, Any]
+    timestamp: str
+
+class PaymentUpdate(BaseModel):
+    status: str
+    amount: Optional[float] = None
+    notes: Optional[str] = None
+
+class GovernanceDecisionCreate(BaseModel):
+    title: str
+    description: str
+    decision_type: str
+    participants: List[str] = []
+    attachments: List[str] = []
+
+class GovernanceDecisionResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    title: str
+    description: str
+    decision_type: str
+    participants: List[str]
+    attachments: List[str]
+    created_by: str
+    created_at: str
+    status: str
+
+class CommitteeMemberCreate(BaseModel):
+    user_id: str
+    role: str
+    start_date: Optional[str] = None
+
+class CommitteeMemberResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    user_id: str
+    user_name: str
+    user_email: str
+    role: str
+    start_date: str
+    status: str
+
+# ==================== AUTH HELPERS ====================
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def create_token(user_id: str, email: str, role: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "role": role,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+async def require_promotor(user: dict = Depends(get_current_user)):
+    if user["role"] != UserRole.PROMOTOR:
+        raise HTTPException(status_code=403, detail="Acceso solo para promotor")
+    return user
+
+# ==================== AUDIT LOGGING ====================
+
+async def log_audit(request: Request, user_id: str, user_email: str, action: str, 
+                    resource_type: str, resource_id: str = None, details: dict = None):
+    ip = request.client.host if request.client else "unknown"
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "user_email": user_email,
+        "action": action,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "ip_address": ip,
+        "details": details or {},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.audit_logs.insert_one(log_entry)
+    return log_entry
+
+# ==================== EVIDENCE GENERATION ====================
+
+def generate_signature_hash(data: dict) -> str:
+    data_str = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(data_str.encode()).hexdigest()
+
+async def generate_evidence_pdf(evidence_type: str, user_data: dict, metadata: dict, evidence_id: str) -> str:
+    pdf_path = EVIDENCE_DIR / f"{evidence_id}.pdf"
     
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4, 
+                           rightMargin=2*cm, leftMargin=2*cm, 
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], 
+                                  fontSize=18, alignment=TA_CENTER, spaceAfter=30)
+    header_style = ParagraphStyle('Header', parent=styles['Heading2'], 
+                                   fontSize=14, spaceAfter=12)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], 
+                                   fontSize=11, spaceAfter=6)
+    mono_style = ParagraphStyle('Mono', parent=styles['Normal'], 
+                                 fontSize=9, fontName='Courier', spaceAfter=6)
+    
+    story = []
+    
+    # Header
+    story.append(Paragraph("FENITEL - ESPACIO DE DATOS SECTORIAL", title_style))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=12, spaceAfter=30)))
+    
+    if evidence_type == "identity":
+        story.append(Paragraph("EVIDENCIA DE IDENTIDAD", header_style))
+        story.append(Paragraph("Certificado de incorporación al Espacio de Datos", normal_style))
+    elif evidence_type == "publication":
+        story.append(Paragraph("EVIDENCIA DE PUBLICACIÓN", header_style))
+        story.append(Paragraph("Certificado de publicación de dataset en el catálogo", normal_style))
+    
+    story.append(Spacer(1, 20))
+    
+    # User data
+    story.append(Paragraph("DATOS DEL TITULAR", header_style))
+    user_table_data = [
+        ["Nombre/Razón Social:", user_data.get("name", "")],
+        ["NIF/CIF:", user_data.get("nif", "")],
+        ["Email:", user_data.get("email", "")],
+        ["Organización:", user_data.get("organization", "")],
+    ]
+    user_table = Table(user_table_data, colWidths=[5*cm, 10*cm])
+    user_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+    ]))
+    story.append(user_table)
+    story.append(Spacer(1, 20))
+    
+    # Metadata
+    story.append(Paragraph("DATOS DE LA EVIDENCIA", header_style))
+    meta_table_data = [
+        ["ID Evidencia:", evidence_id],
+        ["Tipo:", evidence_type.upper()],
+        ["Fecha/Hora:", datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")],
+    ]
+    for key, value in metadata.items():
+        if key not in ["user_id"]:
+            meta_table_data.append([f"{key}:", str(value)])
+    
+    meta_table = Table(meta_table_data, colWidths=[5*cm, 10*cm])
+    meta_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+    ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 20))
+    
+    # Hash signature
+    hash_data = {
+        "evidence_id": evidence_id,
+        "evidence_type": evidence_type,
+        "user_nif": user_data.get("nif"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "metadata": metadata
+    }
+    signature_hash = generate_signature_hash(hash_data)
+    
+    story.append(Paragraph("FIRMA ELECTRÓNICA", header_style))
+    story.append(Paragraph(f"Hash SHA-256:", normal_style))
+    story.append(Paragraph(signature_hash, mono_style))
+    story.append(Spacer(1, 30))
+    
+    # Footer
+    story.append(Paragraph("Este documento constituye evidencia válida según la Orden TDF/758/2025.", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER)))
+    story.append(Paragraph("FENITEL - Federación Nacional de Instaladores de Telecomunicaciones", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER)))
+    
+    doc.build(story)
+    return str(pdf_path), signature_hash
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+# ==================== AUTH ROUTES ====================
 
-# Add your routes to the router instead of directly to app
+@api_router.post("/auth/register", response_model=UserResponse)
+async def register(request: Request, user_data: UserCreate):
+    existing = await db.users.find_one({"email": user_data.email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+    
+    existing_nif = await db.users.find_one({"nif": user_data.nif}, {"_id": 0})
+    if existing_nif:
+        raise HTTPException(status_code=400, detail="NIF ya registrado")
+    
+    user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    user = {
+        "id": user_id,
+        "email": user_data.email,
+        "name": user_data.name,
+        "organization": user_data.organization,
+        "nif": user_data.nif,
+        "phone": user_data.phone,
+        "address": user_data.address,
+        "password_hash": hash_password(user_data.password),
+        "role": user_data.role,
+        "incorporation_status": IncorporationStatus.PENDING_CONTRACT,
+        "contract_signed": False,
+        "payment_status": "pending",
+        "identity_evidence_id": None,
+        "created_at": now,
+        "updated_at": now,
+        "is_provider": False
+    }
+    
+    await db.users.insert_one(user)
+    
+    # Create initial contract
+    contract = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "created_at": now,
+        "signed_at": None,
+        "signature_hash": None,
+        "status": "pending",
+        "pdf_path": None,
+        "version": 1
+    }
+    await db.contracts.insert_one(contract)
+    
+    await log_audit(request, user_id, user_data.email, "REGISTER", "user", user_id, 
+                   {"role": user_data.role, "organization": user_data.organization})
+    
+    user.pop("password_hash", None)
+    return UserResponse(**user)
+
+@api_router.post("/auth/login")
+async def login(request: Request, credentials: UserLogin):
+    user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
+    if not user or not verify_password(credentials.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    
+    token = create_token(user["id"], user["email"], user["role"])
+    
+    await log_audit(request, user["id"], user["email"], "LOGIN", "session", None, {})
+    
+    return {
+        "token": token,
+        "user": UserResponse(**{k: v for k, v in user.items() if k != "password_hash"})
+    }
+
+@api_router.get("/auth/me", response_model=UserResponse)
+async def get_me(user: dict = Depends(get_current_user)):
+    return UserResponse(**{k: v for k, v in user.items() if k != "password_hash"})
+
+# ==================== MEMBERS ROUTES ====================
+
+@api_router.get("/members", response_model=List[UserResponse])
+async def list_members(user: dict = Depends(require_promotor)):
+    members = await db.users.find({"role": {"$ne": UserRole.PROMOTOR}}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return [UserResponse(**m) for m in members]
+
+@api_router.get("/members/{member_id}", response_model=UserResponse)
+async def get_member(member_id: str, user: dict = Depends(get_current_user)):
+    if user["role"] != UserRole.PROMOTOR and user["id"] != member_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    member = await db.users.find_one({"id": member_id}, {"_id": 0, "password_hash": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    return UserResponse(**member)
+
+@api_router.put("/members/{member_id}/provider")
+async def toggle_provider(member_id: str, request: Request, user: dict = Depends(require_promotor)):
+    member = await db.users.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    
+    new_status = not member.get("is_provider", False)
+    await db.users.update_one({"id": member_id}, {"$set": {"is_provider": new_status}})
+    
+    await log_audit(request, user["id"], user["email"], "TOGGLE_PROVIDER", "user", member_id,
+                   {"new_status": new_status})
+    
+    return {"is_provider": new_status}
+
+# ==================== CONTRACTS ROUTES ====================
+
+@api_router.get("/contracts/my", response_model=ContractResponse)
+async def get_my_contract(user: dict = Depends(get_current_user)):
+    contract = await db.contracts.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    return ContractResponse(**contract)
+
+@api_router.post("/contracts/sign")
+async def sign_contract(request: Request, user: dict = Depends(get_current_user)):
+    contract = await db.contracts.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    
+    if contract["status"] == "signed":
+        raise HTTPException(status_code=400, detail="Contrato ya firmado")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Generate signature hash
+    sign_data = {
+        "contract_id": contract["id"],
+        "user_id": user["id"],
+        "user_nif": user["nif"],
+        "timestamp": now.isoformat()
+    }
+    signature_hash = generate_signature_hash(sign_data)
+    
+    # Generate contract PDF
+    contract_id = contract["id"]
+    pdf_path = CONTRACTS_DIR / f"{contract_id}.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+    
+    story.append(Paragraph("CONTRATO DE ADHESIÓN", 
+                          ParagraphStyle('Title', fontSize=18, alignment=TA_CENTER, spaceAfter=30)))
+    story.append(Paragraph("ESPACIO DE DATOS SECTORIAL FENITEL", 
+                          ParagraphStyle('Subtitle', fontSize=14, alignment=TA_CENTER, spaceAfter=20)))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Subtitle', fontSize=12, alignment=TA_CENTER, spaceAfter=30)))
+    
+    story.append(Paragraph(f"<b>PARTES</b>", styles["Heading2"]))
+    story.append(Paragraph(f"Promotor: FENITEL - Federación Nacional de Instaladores de Telecomunicaciones", styles["Normal"]))
+    story.append(Paragraph(f"Miembro: {user['name']} ({user['nif']})", styles["Normal"]))
+    story.append(Spacer(1, 20))
+    
+    story.append(Paragraph("<b>CLÁUSULAS</b>", styles["Heading2"]))
+    clauses = [
+        "PRIMERA: El Miembro acepta las condiciones de participación en el Espacio de Datos.",
+        "SEGUNDA: El Miembro se compromete a cumplir con la normativa vigente.",
+        "TERCERA: El tratamiento de datos se realizará conforme al RGPD.",
+        "CUARTA: El Miembro acepta la gobernanza establecida por el Promotor.",
+        "QUINTA: Las cuotas de incorporación se establecen según tarifa vigente."
+    ]
+    for clause in clauses:
+        story.append(Paragraph(clause, styles["Normal"]))
+        story.append(Spacer(1, 10))
+    
+    story.append(Spacer(1, 30))
+    story.append(Paragraph(f"<b>FIRMA DIGITAL</b>", styles["Heading2"]))
+    story.append(Paragraph(f"Fecha: {now.strftime('%d/%m/%Y %H:%M:%S')} UTC", styles["Normal"]))
+    story.append(Paragraph(f"Hash SHA-256: {signature_hash}", 
+                          ParagraphStyle('Mono', fontName='Courier', fontSize=8)))
+    
+    doc.build(story)
+    
+    # Update contract
+    await db.contracts.update_one(
+        {"id": contract_id},
+        {"$set": {
+            "signed_at": now.isoformat(),
+            "signature_hash": signature_hash,
+            "status": "signed",
+            "pdf_path": str(pdf_path)
+        }}
+    )
+    
+    # Update user status
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "contract_signed": True,
+            "incorporation_status": IncorporationStatus.PENDING_PAYMENT
+        }}
+    )
+    
+    await log_audit(request, user["id"], user["email"], "SIGN_CONTRACT", "contract", contract_id,
+                   {"signature_hash": signature_hash})
+    
+    return {"message": "Contrato firmado correctamente", "signature_hash": signature_hash}
+
+@api_router.get("/contracts/{contract_id}/pdf")
+async def download_contract_pdf(contract_id: str, user: dict = Depends(get_current_user)):
+    contract = await db.contracts.find_one({"id": contract_id}, {"_id": 0})
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    
+    if user["role"] != UserRole.PROMOTOR and contract["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    if not contract.get("pdf_path") or not Path(contract["pdf_path"]).exists():
+        raise HTTPException(status_code=404, detail="PDF no disponible")
+    
+    return FileResponse(contract["pdf_path"], filename=f"contrato_{contract_id}.pdf", media_type="application/pdf")
+
+# ==================== PAYMENTS ROUTES ====================
+
+@api_router.get("/payments")
+async def list_payments(user: dict = Depends(require_promotor)):
+    users = await db.users.find({"role": {"$ne": UserRole.PROMOTOR}}, 
+                                {"_id": 0, "id": 1, "name": 1, "email": 1, "nif": 1, 
+                                 "payment_status": 1, "organization": 1}).to_list(1000)
+    payments = await db.payments.find({}, {"_id": 0}).to_list(1000)
+    payments_map = {p["user_id"]: p for p in payments}
+    
+    result = []
+    for u in users:
+        payment = payments_map.get(u["id"], {})
+        result.append({
+            "user_id": u["id"],
+            "user_name": u["name"],
+            "user_email": u["email"],
+            "user_nif": u["nif"],
+            "organization": u["organization"],
+            "status": u["payment_status"],
+            "amount": payment.get("amount"),
+            "paid_at": payment.get("paid_at"),
+            "notes": payment.get("notes")
+        })
+    return result
+
+@api_router.put("/payments/{user_id}")
+async def update_payment(user_id: str, payment: PaymentUpdate, request: Request, user: dict = Depends(require_promotor)):
+    member = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    payment_record = {
+        "user_id": user_id,
+        "status": payment.status,
+        "amount": payment.amount,
+        "notes": payment.notes,
+        "updated_at": now,
+        "updated_by": user["id"]
+    }
+    
+    if payment.status == "paid":
+        payment_record["paid_at"] = now
+    
+    await db.payments.update_one({"user_id": user_id}, {"$set": payment_record}, upsert=True)
+    await db.users.update_one({"id": user_id}, {"$set": {"payment_status": payment.status}})
+    
+    # Check if should update incorporation status
+    if payment.status == "paid" and member.get("contract_signed"):
+        await db.users.update_one({"id": user_id}, {"$set": {"incorporation_status": IncorporationStatus.PENDING_IDENTITY}})
+    
+    await log_audit(request, user["id"], user["email"], "UPDATE_PAYMENT", "payment", user_id,
+                   {"status": payment.status, "amount": payment.amount})
+    
+    return {"message": "Pago actualizado"}
+
+# ==================== IDENTITY EVIDENCE ROUTES ====================
+
+@api_router.post("/evidence/identity/{user_id}")
+async def generate_identity_evidence(user_id: str, request: Request, user: dict = Depends(require_promotor)):
+    member = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    
+    if not member.get("contract_signed"):
+        raise HTTPException(status_code=400, detail="El miembro debe firmar el contrato primero")
+    
+    if member.get("payment_status") != "paid":
+        raise HTTPException(status_code=400, detail="El pago debe estar confirmado")
+    
+    evidence_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    metadata = {
+        "contract_signed": member["contract_signed"],
+        "payment_status": member["payment_status"],
+        "role": member["role"],
+        "is_provider": member.get("is_provider", False)
+    }
+    
+    pdf_path, signature_hash = await generate_evidence_pdf(
+        "identity",
+        {"name": member["name"], "nif": member["nif"], "email": member["email"], "organization": member["organization"]},
+        metadata,
+        evidence_id
+    )
+    
+    evidence = {
+        "id": evidence_id,
+        "user_id": user_id,
+        "evidence_type": "identity",
+        "hash": signature_hash,
+        "timestamp": now.isoformat(),
+        "pdf_path": pdf_path,
+        "metadata": metadata,
+        "generated_by": user["id"]
+    }
+    await db.evidence.insert_one(evidence)
+    
+    # Update user status to effective
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "identity_evidence_id": evidence_id,
+            "incorporation_status": IncorporationStatus.EFFECTIVE
+        }}
+    )
+    
+    await log_audit(request, user["id"], user["email"], "GENERATE_IDENTITY_EVIDENCE", "evidence", evidence_id,
+                   {"member_id": user_id, "hash": signature_hash})
+    
+    return EvidenceResponse(**evidence)
+
+@api_router.get("/evidence/{evidence_id}/pdf")
+async def download_evidence_pdf(evidence_id: str, user: dict = Depends(get_current_user)):
+    evidence = await db.evidence.find_one({"id": evidence_id}, {"_id": 0})
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidencia no encontrada")
+    
+    if user["role"] != UserRole.PROMOTOR and evidence["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    if not evidence.get("pdf_path") or not Path(evidence["pdf_path"]).exists():
+        raise HTTPException(status_code=404, detail="PDF no disponible")
+    
+    return FileResponse(evidence["pdf_path"], filename=f"evidencia_{evidence_id}.pdf", media_type="application/pdf")
+
+@api_router.get("/evidence/user/{user_id}", response_model=List[EvidenceResponse])
+async def get_user_evidence(user_id: str, user: dict = Depends(get_current_user)):
+    if user["role"] != UserRole.PROMOTOR and user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    evidence_list = await db.evidence.find({"user_id": user_id}, {"_id": 0}).to_list(100)
+    return [EvidenceResponse(**e) for e in evidence_list]
+
+# ==================== DATASETS ROUTES ====================
+
+@api_router.post("/datasets", response_model=DatasetResponse)
+async def upload_dataset(
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(...),
+    keywords: str = Form(""),
+    category: str = Form("general"),
+    license: str = Form("CC-BY-4.0"),
+    access_rights: str = Form("restricted"),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    if user["incorporation_status"] != IncorporationStatus.EFFECTIVE:
+        raise HTTPException(status_code=400, detail="Debe completar la incorporación efectiva antes de subir datasets")
+    
+    if not user.get("is_provider"):
+        raise HTTPException(status_code=403, detail="Solo los proveedores pueden subir datasets")
+    
+    # Validate file type
+    if not file.filename.endswith(('.csv', '.json')):
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos CSV o JSON")
+    
+    dataset_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    # Save file
+    file_ext = Path(file.filename).suffix
+    file_path = DATASETS_DIR / f"{dataset_id}{file_ext}"
+    
+    content = await file.read()
+    async with aiofiles.open(file_path, 'wb') as f:
+        await f.write(content)
+    
+    # Validate content
+    validation_status = "pending"
+    try:
+        if file_ext == '.csv':
+            reader = csv.reader(io.StringIO(content.decode('utf-8')))
+            rows = list(reader)
+            if len(rows) > 0:
+                validation_status = "valid"
+        elif file_ext == '.json':
+            json.loads(content.decode('utf-8'))
+            validation_status = "valid"
+    except Exception as e:
+        validation_status = "invalid"
+        logger.error(f"Dataset validation error: {e}")
+    
+    # Generate DCAT-AP metadata
+    keywords_list = [k.strip() for k in keywords.split(",") if k.strip()]
+    dcat_metadata = {
+        "@context": "https://www.w3.org/ns/dcat#",
+        "@type": "Dataset",
+        "identifier": dataset_id,
+        "title": title,
+        "description": description,
+        "keyword": keywords_list,
+        "theme": category,
+        "license": license,
+        "accessRights": access_rights,
+        "publisher": {
+            "@type": "Organization",
+            "name": user["organization"],
+            "identifier": user["nif"]
+        },
+        "issued": now.isoformat(),
+        "modified": now.isoformat()
+    }
+    
+    dataset = {
+        "id": dataset_id,
+        "user_id": user["id"],
+        "title": title,
+        "description": description,
+        "keywords": keywords_list,
+        "category": category,
+        "license": license,
+        "access_rights": access_rights,
+        "file_path": str(file_path),
+        "file_type": file_ext[1:],
+        "file_size": len(content),
+        "version": 1,
+        "status": "draft",
+        "validation_status": validation_status,
+        "publication_evidence_id": None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "dcat_metadata": dcat_metadata
+    }
+    
+    await db.datasets.insert_one(dataset)
+    
+    await log_audit(request, user["id"], user["email"], "UPLOAD_DATASET", "dataset", dataset_id,
+                   {"title": title, "file_type": file_ext, "size": len(content)})
+    
+    return DatasetResponse(**dataset)
+
+@api_router.get("/datasets", response_model=List[DatasetResponse])
+async def list_datasets(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if user["role"] != UserRole.PROMOTOR:
+        # Non-promotors can only see published datasets or their own
+        query["$or"] = [{"status": "published"}, {"user_id": user["id"]}]
+    elif status:
+        query["status"] = status
+    
+    datasets = await db.datasets.find(query, {"_id": 0}).to_list(1000)
+    return [DatasetResponse(**d) for d in datasets]
+
+@api_router.get("/datasets/catalog")
+async def get_catalog():
+    """DCAT-AP catalog endpoint"""
+    datasets = await db.datasets.find({"status": "published"}, {"_id": 0}).to_list(1000)
+    
+    catalog = {
+        "@context": "https://www.w3.org/ns/dcat#",
+        "@type": "Catalog",
+        "title": "FENITEL - Catálogo de Datos Sectoriales",
+        "description": "Espacio de Datos Sectorial conforme a Orden TDF/758/2025",
+        "publisher": {
+            "@type": "Organization",
+            "name": "FENITEL"
+        },
+        "dataset": [d["dcat_metadata"] for d in datasets]
+    }
+    return catalog
+
+@api_router.put("/datasets/{dataset_id}/validate")
+async def validate_dataset(dataset_id: str, request: Request, user: dict = Depends(require_promotor)):
+    dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset no encontrado")
+    
+    # Re-validate file
+    file_path = Path(dataset["file_path"])
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
+    validation_status = "valid"
+    try:
+        async with aiofiles.open(file_path, 'r') as f:
+            content = await f.read()
+        
+        if dataset["file_type"] == "csv":
+            reader = csv.reader(io.StringIO(content))
+            rows = list(reader)
+            if len(rows) == 0:
+                validation_status = "invalid"
+        elif dataset["file_type"] == "json":
+            json.loads(content)
+    except Exception:
+        validation_status = "invalid"
+    
+    await db.datasets.update_one(
+        {"id": dataset_id},
+        {"$set": {"validation_status": validation_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    await log_audit(request, user["id"], user["email"], "VALIDATE_DATASET", "dataset", dataset_id,
+                   {"validation_status": validation_status})
+    
+    return {"validation_status": validation_status}
+
+@api_router.put("/datasets/{dataset_id}/publish")
+async def publish_dataset(dataset_id: str, request: Request, user: dict = Depends(require_promotor)):
+    dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset no encontrado")
+    
+    if dataset["validation_status"] != "valid":
+        raise HTTPException(status_code=400, detail="El dataset debe estar validado antes de publicar")
+    
+    # Generate publication evidence
+    evidence_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    owner = await db.users.find_one({"id": dataset["user_id"]}, {"_id": 0})
+    
+    metadata = {
+        "dataset_id": dataset_id,
+        "dataset_title": dataset["title"],
+        "dcat_identifier": dataset_id
+    }
+    
+    pdf_path, signature_hash = await generate_evidence_pdf(
+        "publication",
+        {"name": owner["name"], "nif": owner["nif"], "email": owner["email"], "organization": owner["organization"]},
+        metadata,
+        evidence_id
+    )
+    
+    evidence = {
+        "id": evidence_id,
+        "user_id": dataset["user_id"],
+        "evidence_type": "publication",
+        "hash": signature_hash,
+        "timestamp": now.isoformat(),
+        "pdf_path": pdf_path,
+        "metadata": metadata,
+        "generated_by": user["id"]
+    }
+    await db.evidence.insert_one(evidence)
+    
+    # Update dataset
+    await db.datasets.update_one(
+        {"id": dataset_id},
+        {"$set": {
+            "status": "published",
+            "publication_evidence_id": evidence_id,
+            "updated_at": now.isoformat()
+        }}
+    )
+    
+    await log_audit(request, user["id"], user["email"], "PUBLISH_DATASET", "dataset", dataset_id,
+                   {"evidence_id": evidence_id, "hash": signature_hash})
+    
+    return {"message": "Dataset publicado", "evidence_id": evidence_id}
+
+@api_router.get("/datasets/{dataset_id}/download")
+async def download_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
+    dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset no encontrado")
+    
+    if user["role"] != UserRole.PROMOTOR and dataset["user_id"] != user["id"]:
+        if dataset["status"] != "published":
+            raise HTTPException(status_code=403, detail="No autorizado")
+    
+    file_path = Path(dataset["file_path"])
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
+    return FileResponse(file_path, filename=f"{dataset['title']}.{dataset['file_type']}")
+
+# ==================== AUDIT ROUTES ====================
+
+@api_router.get("/audit", response_model=List[AuditLogResponse])
+async def list_audit_logs(
+    resource_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    user: dict = Depends(require_promotor)
+):
+    query = {}
+    if resource_type:
+        query["resource_type"] = resource_type
+    if user_id:
+        query["user_id"] = user_id
+    if from_date:
+        query["timestamp"] = {"$gte": from_date}
+    if to_date:
+        if "timestamp" in query:
+            query["timestamp"]["$lte"] = to_date
+        else:
+            query["timestamp"] = {"$lte": to_date}
+    
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(1000)
+    return [AuditLogResponse(**log) for log in logs]
+
+@api_router.get("/audit/export")
+async def export_audit_logs(user: dict = Depends(require_promotor)):
+    logs = await db.audit_logs.find({}, {"_id": 0}).sort("timestamp", -1).to_list(10000)
+    
+    output = io.StringIO()
+    if logs:
+        writer = csv.DictWriter(output, fieldnames=logs[0].keys())
+        writer.writeheader()
+        for log in logs:
+            log["details"] = json.dumps(log["details"])
+            writer.writerow(log)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=audit_logs.csv"}
+    )
+
+# ==================== GOVERNANCE ROUTES ====================
+
+@api_router.get("/governance/committee", response_model=List[CommitteeMemberResponse])
+async def list_committee(user: dict = Depends(get_current_user)):
+    members = await db.committee.find({}, {"_id": 0}).to_list(100)
+    result = []
+    for m in members:
+        member_user = await db.users.find_one({"id": m["user_id"]}, {"_id": 0})
+        if member_user:
+            result.append(CommitteeMemberResponse(
+                id=m["id"],
+                user_id=m["user_id"],
+                user_name=member_user["name"],
+                user_email=member_user["email"],
+                role=m["role"],
+                start_date=m["start_date"],
+                status=m["status"]
+            ))
+    return result
+
+@api_router.post("/governance/committee", response_model=CommitteeMemberResponse)
+async def add_committee_member(member: CommitteeMemberCreate, request: Request, user: dict = Depends(require_promotor)):
+    member_user = await db.users.find_one({"id": member.user_id}, {"_id": 0})
+    if not member_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    member_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    committee_member = {
+        "id": member_id,
+        "user_id": member.user_id,
+        "role": member.role,
+        "start_date": member.start_date or now,
+        "status": "active"
+    }
+    await db.committee.insert_one(committee_member)
+    
+    await log_audit(request, user["id"], user["email"], "ADD_COMMITTEE_MEMBER", "committee", member_id,
+                   {"member_user_id": member.user_id, "role": member.role})
+    
+    return CommitteeMemberResponse(
+        id=member_id,
+        user_id=member.user_id,
+        user_name=member_user["name"],
+        user_email=member_user["email"],
+        role=member.role,
+        start_date=committee_member["start_date"],
+        status="active"
+    )
+
+@api_router.delete("/governance/committee/{member_id}")
+async def remove_committee_member(member_id: str, request: Request, user: dict = Depends(require_promotor)):
+    result = await db.committee.delete_one({"id": member_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Miembro del comité no encontrado")
+    
+    await log_audit(request, user["id"], user["email"], "REMOVE_COMMITTEE_MEMBER", "committee", member_id, {})
+    
+    return {"message": "Miembro eliminado del comité"}
+
+@api_router.get("/governance/decisions", response_model=List[GovernanceDecisionResponse])
+async def list_decisions(user: dict = Depends(get_current_user)):
+    decisions = await db.decisions.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [GovernanceDecisionResponse(**d) for d in decisions]
+
+@api_router.post("/governance/decisions", response_model=GovernanceDecisionResponse)
+async def create_decision(decision: GovernanceDecisionCreate, request: Request, user: dict = Depends(require_promotor)):
+    decision_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    decision_doc = {
+        "id": decision_id,
+        "title": decision.title,
+        "description": decision.description,
+        "decision_type": decision.decision_type,
+        "participants": decision.participants,
+        "attachments": decision.attachments,
+        "created_by": user["id"],
+        "created_at": now,
+        "status": "active"
+    }
+    await db.decisions.insert_one(decision_doc)
+    
+    await log_audit(request, user["id"], user["email"], "CREATE_DECISION", "decision", decision_id,
+                   {"title": decision.title, "type": decision.decision_type})
+    
+    return GovernanceDecisionResponse(**decision_doc)
+
+# ==================== EXPORT ROUTES ====================
+
+@api_router.get("/export/member/{member_id}")
+async def export_member_dossier(member_id: str, request: Request, user: dict = Depends(require_promotor)):
+    member = await db.users.find_one({"id": member_id}, {"_id": 0, "password_hash": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    
+    # Create ZIP file
+    zip_path = EXPORTS_DIR / f"expediente_{member_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Member data
+        zf.writestr("datos_miembro.json", json.dumps(member, indent=2, ensure_ascii=False))
+        
+        # Contract
+        contract = await db.contracts.find_one({"user_id": member_id}, {"_id": 0})
+        if contract:
+            zf.writestr("contrato/datos_contrato.json", json.dumps(contract, indent=2, ensure_ascii=False))
+            if contract.get("pdf_path") and Path(contract["pdf_path"]).exists():
+                zf.write(contract["pdf_path"], "contrato/contrato_firmado.pdf")
+        
+        # Evidence
+        evidence_list = await db.evidence.find({"user_id": member_id}, {"_id": 0}).to_list(100)
+        for i, ev in enumerate(evidence_list):
+            zf.writestr(f"evidencias/evidencia_{i+1}_datos.json", json.dumps(ev, indent=2, ensure_ascii=False))
+            if ev.get("pdf_path") and Path(ev["pdf_path"]).exists():
+                zf.write(ev["pdf_path"], f"evidencias/evidencia_{i+1}.pdf")
+        
+        # Datasets
+        datasets = await db.datasets.find({"user_id": member_id}, {"_id": 0}).to_list(100)
+        for i, ds in enumerate(datasets):
+            ds_copy = {k: v for k, v in ds.items() if k != "file_path"}
+            zf.writestr(f"datasets/dataset_{i+1}_metadatos.json", json.dumps(ds_copy, indent=2, ensure_ascii=False))
+            if ds.get("file_path") and Path(ds["file_path"]).exists():
+                zf.write(ds["file_path"], f"datasets/dataset_{i+1}.{ds['file_type']}")
+        
+        # Payments
+        payment = await db.payments.find_one({"user_id": member_id}, {"_id": 0})
+        if payment:
+            zf.writestr("pagos/registro_pago.json", json.dumps(payment, indent=2, ensure_ascii=False))
+        
+        # Audit logs
+        logs = await db.audit_logs.find({"user_id": member_id}, {"_id": 0}).to_list(1000)
+        if logs:
+            zf.writestr("auditoria/logs.json", json.dumps(logs, indent=2, ensure_ascii=False))
+    
+    await log_audit(request, user["id"], user["email"], "EXPORT_DOSSIER", "export", member_id, {})
+    
+    return FileResponse(zip_path, filename=f"expediente_{member['nif']}.zip", media_type="application/zip")
+
+# ==================== STATS ROUTES ====================
+
+@api_router.get("/stats")
+async def get_stats(user: dict = Depends(require_promotor)):
+    total_members = await db.users.count_documents({"role": {"$ne": UserRole.PROMOTOR}})
+    effective_members = await db.users.count_documents({"incorporation_status": IncorporationStatus.EFFECTIVE})
+    pending_payments = await db.users.count_documents({"payment_status": "pending"})
+    total_datasets = await db.datasets.count_documents({})
+    published_datasets = await db.datasets.count_documents({"status": "published"})
+    total_providers = await db.users.count_documents({"is_provider": True})
+    
+    return {
+        "total_members": total_members,
+        "effective_members": effective_members,
+        "pending_payments": pending_payments,
+        "total_datasets": total_datasets,
+        "published_datasets": published_datasets,
+        "total_providers": total_providers
+    }
+
+# ==================== ROOT ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "FENITEL Espacio de Datos API", "version": "1.0.0"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
+# Include router and middleware
 app.include_router(api_router)
 
 app.add_middleware(
@@ -76,13 +1163,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
