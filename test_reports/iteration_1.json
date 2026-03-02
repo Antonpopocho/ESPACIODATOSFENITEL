@@ -1,0 +1,71 @@
+{
+  "summary": "Initial MVP testing of FENITEL Espacio de Datos Sectorial. Full backend (26 tests) and frontend (35 tests) coverage across auth, contracts, payments, members, datasets, governance, and audit flows. One critical frontend bug found in the 401 error handling.",
+  "mode": "generate",
+  "baseline_commit": "5ad2d32be7fb6abe31547090f9a21fa6fb60c07b",
+  "head_commit": "f38ec35791c52ecf5ba079332aad5fb8ca269e9b",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login.js + api.js",
+        "issue": "CRITICAL BUG: Axios response interceptor in /app/frontend/src/lib/api.js redirects to '/login' on ANY 401 response using window.location.href='/login'. This includes the login endpoint itself. When users enter invalid credentials, they get a 401 from /api/auth/login, the interceptor fires, and the page refreshes/redirects to /login WITHOUT showing any error message. Users have no feedback that their credentials were incorrect.",
+        "selector": "[data-testid='login-error']",
+        "priority": "HIGH",
+        "root_cause": "api.js line ~31: if (error.response?.status === 401) { window.location.href = '/login'; } - This needs to exclude the /auth/login endpoint from the redirect behavior.",
+        "fix": "Add a check: if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) { window.location.href = '/login'; }"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard (Promotor)",
+        "issues": ["Stats cards briefly show '-' on initial load before API response arrives. Consider adding skeleton loading states for better UX."]
+      }
+    ]
+  },
+  "regression_results": {
+    "total_specs": 35,
+    "passed": 34,
+    "failed": 1,
+    "skipped": 0,
+    "backend_total": 26,
+    "backend_passed": 26,
+    "backend_failed": 0
+  },
+  "specs_created": [
+    "/app/tests/e2e/core-flows.spec.ts",
+    "/app/tests/e2e/promotor-features.spec.ts",
+    "/app/tests/e2e/member-features.spec.ts",
+    "/app/tests/e2e/golden-path.spec.ts"
+  ],
+  "specs_updated": [],
+  "quarantined_tests": [],
+  "test_report_links": [
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Fix axios 401 interceptor in /app/frontend/src/lib/api.js - exclude /auth/login endpoint from the redirect behavior. When login returns 401, the error message should be shown to the user, not redirected. Fix: add check `!error.config?.url?.includes('/auth/login')` before redirecting."
+  ],
+  "updated_files": [
+    "/app/tests/playwright.config.ts",
+    "/app/tests/fixtures/helpers.ts",
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_auth.py",
+    "/app/backend/tests/test_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (26/26)",
+    "frontend": "97% (34/35)"
+  },
+  "seed_data_creation": "Golden path test creates test users (TEST_Golden User) and signs contracts, marks payments, generates identity evidence during test run. These are prefixed with TEST_ for identification.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "One critical bug: axios interceptor in api.js redirects on ANY 401 including login errors, preventing error messages from showing. After E1 fixes this, rerun core-flows.spec.ts 'Login with invalid credentials shows error' test. All other tests pass including full golden path. Backend 100% passing. Database has 10 seed members, 1 effective member (from golden path test). No datasets in catalog yet.",
+  "rca_of_issue": "Root cause: In /app/frontend/src/lib/api.js, the axios response interceptor intercepts ALL 401 responses and does window.location.href='/login'. When /api/auth/login returns 401 (wrong credentials), this interceptor fires before the Login component's catch block can set the error state. The page navigates away before React can render the error. Fix: check if the request was to /auth/login and if so, skip the redirect - let the component handle the error."
+}
