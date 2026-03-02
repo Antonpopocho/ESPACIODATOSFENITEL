@@ -107,4 +107,11 @@ export const statsApi = {
   get: () => api.get('/stats'),
 };
 
+// Documentation
+export const docsApi = {
+  downloadManualDespliegue: () => api.get('/docs/manual-despliegue', { responseType: 'blob' }),
+  downloadChecklist: () => api.get('/docs/checklist-758', { responseType: 'blob' }),
+  downloadManualAuditoria: () => api.get('/docs/manual-auditoria', { responseType: 'blob' }),
+};
+
 export default api;
