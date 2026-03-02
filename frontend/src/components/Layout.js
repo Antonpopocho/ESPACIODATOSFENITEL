@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   ChevronDown,
-  CreditCard
+  CreditCard,
+  BookOpen
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
