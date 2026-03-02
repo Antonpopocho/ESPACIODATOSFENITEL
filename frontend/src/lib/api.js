@@ -26,7 +26,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Only redirect on 401 if it's not a login/register attempt
+    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login') && !error.config?.url?.includes('/auth/register')) {
       localStorage.removeItem('fenitel_token');
       localStorage.removeItem('fenitel_user');
       window.location.href = '/login';
