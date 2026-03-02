@@ -1,0 +1,143 @@
+{
+  "project_name": "FENITEL Data Space",
+  "design_philosophy": {
+    "theme": "Institutional Professional",
+    "mode": "light",
+    "core_concept": "Trusted Authority",
+    "description": "A clean, high-density interface that emphasizes transparency, compliance, and institutional trust. It avoids generic SaaS trends in favor of a structured, document-like aesthetic enhanced with modern interactivity.",
+    "emotional_tone": "Secure, Efficient, Compliant, Connected"
+  },
+  "typography": {
+    "headings": {
+      "family": "Outfit",
+      "weights": ["500", "600", "700"],
+      "tracking": "-0.02em",
+      "usage": "All section titles, page headers, and widget titles."
+    },
+    "body": {
+      "family": "Public Sans",
+      "weights": ["400", "500"],
+      "usage": "General content, tables, form inputs."
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "usage": "Audit logs, JSON data views, contract hashes, IDs."
+    }
+  },
+  "colors": {
+    "primary": {
+      "name": "Telecom Navy",
+      "hex": "#0F172A",
+      "usage": "Sidebar backgrounds, primary headings, active states."
+    },
+    "brand": {
+      "name": "Link Blue",
+      "hex": "#0284C7",
+      "usage": "Primary buttons, links, active tab indicators, data visualizations."
+    },
+    "accent": {
+      "name": "Compliance Amber",
+      "hex": "#D97706",
+      "usage": "Warnings, pending states, important notifications."
+    },
+    "success": {
+      "name": "Verified Green",
+      "hex": "#059669",
+      "usage": "Success states, 'Signed' badges, 'Valid' indicators."
+    },
+    "background": {
+      "app": "#F8FAFC",
+      "card": "#FFFFFF",
+      "sidebar": "#0F172A"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "active": "#94A3B8"
+    }
+  },
+  "layout": {
+    "spacing_scale": "Relaxed but Dense",
+    "container_padding": "p-6 md:p-8 lg:p-10",
+    "grid_system": "Bento Grid Mode B (High Density)",
+    "rules": [
+      "Use 'gap-4' for dashboard grids to maintain density.",
+      "Sidebar navigation should be persistent on desktop.",
+      "Forms should use 'max-w-2xl' for readability, never full width.",
+      "Tables must be full-width with sticky headers."
+    ]
+  },
+  "components": {
+    "buttons": {
+      "style": "sharp",
+      "radius": "rounded-md",
+      "shadow": "shadow-sm",
+      "hover": "transform active:scale-95 transition-all"
+    },
+    "cards": {
+      "style": "flat",
+      "border": "border border-slate-200",
+      "shadow": "shadow-sm hover:shadow-md transition-shadow",
+      "radius": "rounded-lg"
+    },
+    "inputs": {
+      "style": "institutional",
+      "bg": "bg-white",
+      "border": "border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+    },
+    "status_badges": {
+      "style": "pill",
+      "text": "uppercase text-xs font-bold tracking-wider",
+      "padding": "px-2.5 py-0.5"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "usage": "Sticky headers and modal overlays only.",
+      "classes": "bg-white/80 backdrop-blur-md border-b border-white/20"
+    },
+    "micro_interactions": {
+      "hover": "Subtle lift (-1px) on interactive cards.",
+      "click": "Ripple effect on buttons.",
+      "loading": "Skeleton loaders for data tables."
+    },
+    "charts": {
+      "library": "Recharts (via Shadcn)",
+      "style": "Minimalist, thin lines, soft gradients.",
+      "palette": ["#0284C7", "#0EA5E9", "#38BDF8", "#7DD3FC"]
+    }
+  },
+  "assets": {
+    "images": {
+      "login_hero": "https://images.unsplash.com/photo-1765046255517-412341954c4c?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "dashboard_banner": "https://images.unsplash.com/photo-1541415534056-fad380cd68a5?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "infrastructure_bg": "https://images.unsplash.com/photo-1680992046626-418f7e910589?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "active_server": "https://images.unsplash.com/photo-1680992045535-95919d4971a9?crop=entropy&cs=srgb&fm=jpg&q=85"
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px (Thin/Elegant)"
+    }
+  },
+  "universal_guidelines": [
+    "NEVER use gradients for text.",
+    "Ensure all text has a contrast ratio of at least 4.5:1 against its background.",
+    "Use 'data-testid' attributes for all interactive elements.",
+    "Do not use generic 'Inter' font for headings; use 'Outfit'.",
+    "All dates must be displayed in 'DD/MM/YYYY' format (Spanish convention).",
+    "Currency must be formatted as '€' (EUR).",
+    "Dashboard widgets must snap to the grid (h-full)."
+  ],
+  "instructions_to_main_agent": {
+    "setup": [
+      "Install required fonts: @fontsource/outfit, @fontsource/public-sans, @fontsource/jetbrains-mono.",
+      "Configure Tailwind theme to match the defined color palette.",
+      "Set up 'sonner' for toast notifications."
+    ],
+    "implementation_order": [
+      "Set up global layout (Sidebar + Header).",
+      "Build authentication pages (Login/Register) with the 'login_hero' image.",
+      "Develop the 'Dashboard' grid layout.",
+      "Implement the 'Data Upload' and 'Contract Signing' flows."
+    ]
+  }
+}
