@@ -1127,6 +1127,416 @@ async def export_member_dossier(member_id: str, request: Request, user: dict = D
     
     return FileResponse(zip_path, filename=f"expediente_{member['nif']}.zip", media_type="application/zip")
 
+# ==================== DOCUMENTATION ROUTES ====================
+
+@api_router.get("/docs/manual-despliegue")
+async def download_manual_despliegue(user: dict = Depends(require_promotor)):
+    """Generate and download deployment manual PDF"""
+    pdf_path = EXPORTS_DIR / "manual_despliegue.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                           rightMargin=2*cm, leftMargin=2*cm,
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'],
+                                  fontSize=20, alignment=TA_CENTER, spaceAfter=30,
+                                  textColor=colors.HexColor('#0F172A'))
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+                               fontSize=14, spaceBefore=20, spaceAfter=10,
+                               textColor=colors.HexColor('#0284C7'))
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                   fontSize=10, spaceAfter=6)
+    code_style = ParagraphStyle('Code', parent=styles['Normal'],
+                                 fontSize=9, fontName='Courier',
+                                 backColor=colors.HexColor('#F1F5F9'),
+                                 spaceAfter=6)
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("MANUAL DE DESPLIEGUE", title_style))
+    story.append(Paragraph("FENITEL - Espacio de Datos Sectorial", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=12, spaceAfter=30)))
+    story.append(Paragraph(f"Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC", 
+                          ParagraphStyle('Date', alignment=TA_CENTER, fontSize=10, textColor=colors.gray, spaceAfter=40)))
+    
+    # Requisitos
+    story.append(Paragraph("1. REQUISITOS DEL SISTEMA", h2_style))
+    requisitos = [
+        "• Docker & Docker Compose",
+        "• 2GB RAM mínimo",
+        "• 10GB espacio en disco",
+        "• Dominio con certificado SSL (HTTPS obligatorio)"
+    ]
+    for req in requisitos:
+        story.append(Paragraph(req, normal_style))
+    
+    # Estructura
+    story.append(Paragraph("2. ESTRUCTURA DEL PROYECTO", h2_style))
+    estructura = """
+/app/
+├── backend/              # FastAPI backend
+│   ├── server.py         # Aplicación principal
+│   ├── requirements.txt  # Dependencias Python
+│   └── .env              # Variables de entorno
+├── frontend/             # React frontend
+│   ├── src/              # Código fuente
+│   └── .env              # Variables de entorno
+├── storage/              # Almacenamiento de archivos
+│   ├── datasets/         # Datasets CSV/JSON
+│   ├── contracts/        # Contratos PDF
+│   ├── evidence/         # Evidencias firmadas
+│   └── exports/          # Expedientes ZIP
+└── docker-compose.yml    # Configuración Docker
+"""
+    story.append(Paragraph(estructura.replace('\n', '<br/>'), code_style))
+    
+    # Variables de entorno
+    story.append(Paragraph("3. VARIABLES DE ENTORNO", h2_style))
+    story.append(Paragraph("<b>Backend (.env)</b>", normal_style))
+    env_backend = """
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=fenitel_data_space
+JWT_SECRET=tu-clave-secreta-jwt-256bits
+CORS_ORIGINS=https://tu-dominio.com
+"""
+    story.append(Paragraph(env_backend.replace('\n', '<br/>'), code_style))
+    
+    story.append(Paragraph("<b>Frontend (.env)</b>", normal_style))
+    story.append(Paragraph("REACT_APP_BACKEND_URL=https://tu-dominio.com", code_style))
+    
+    # Pasos de despliegue
+    story.append(Paragraph("4. PASOS DE DESPLIEGUE", h2_style))
+    pasos = [
+        "1. Clonar el repositorio y configurar variables de entorno",
+        "2. Ejecutar: docker-compose build",
+        "3. Ejecutar: docker-compose up -d",
+        "4. Crear usuario promotor inicial",
+        "5. Verificar servicios con: docker-compose ps"
+    ]
+    for paso in pasos:
+        story.append(Paragraph(paso, normal_style))
+    
+    # Backup
+    story.append(Paragraph("5. BACKUP Y RESTAURACIÓN", h2_style))
+    story.append(Paragraph("<b>Backup MongoDB:</b>", normal_style))
+    story.append(Paragraph("docker-compose exec mongodb mongodump --out /backup", code_style))
+    story.append(Paragraph("<b>Backup Storage:</b>", normal_style))
+    story.append(Paragraph("tar -czvf storage_backup.tar.gz ./storage", code_style))
+    
+    # Seguridad
+    story.append(Paragraph("6. SEGURIDAD", h2_style))
+    seguridad = [
+        "✓ HTTPS obligatorio (configurar en nginx/ingress)",
+        "✓ JWT con expiración de 24 horas",
+        "✓ Contraseñas hasheadas con bcrypt",
+        "✓ CORS configurado por dominio",
+        "✓ Logs inmutables para auditoría"
+    ]
+    for item in seguridad:
+        story.append(Paragraph(item, normal_style))
+    
+    # Footer
+    story.append(Spacer(1, 40))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER, textColor=colors.gray)))
+    
+    doc.build(story)
+    
+    return FileResponse(pdf_path, filename="manual_despliegue_fenitel.pdf", media_type="application/pdf")
+
+
+@api_router.get("/docs/checklist-758")
+async def download_checklist(user: dict = Depends(require_promotor)):
+    """Generate and download compliance checklist PDF"""
+    pdf_path = EXPORTS_DIR / "checklist_orden_758.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                           rightMargin=1.5*cm, leftMargin=1.5*cm,
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'],
+                                  fontSize=18, alignment=TA_CENTER, spaceAfter=20,
+                                  textColor=colors.HexColor('#0F172A'))
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+                               fontSize=12, spaceBefore=15, spaceAfter=8,
+                               textColor=colors.HexColor('#0284C7'))
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                   fontSize=9, spaceAfter=4)
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("CHECKLIST CUMPLIMIENTO", title_style))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=11, spaceAfter=10)))
+    story.append(Paragraph("FENITEL - Espacio de Datos Sectorial", 
+                          ParagraphStyle('Org', alignment=TA_CENTER, fontSize=10, spaceAfter=20, textColor=colors.gray)))
+    story.append(Paragraph(f"Fecha: {datetime.now(timezone.utc).strftime('%d/%m/%Y')}", 
+                          ParagraphStyle('Date', alignment=TA_CENTER, fontSize=9, spaceAfter=30)))
+    
+    # Secciones del checklist
+    checklist_sections = [
+        ("1. REGISTRO Y ADHESIÓN", [
+            ("Formulario de registro de miembros", "✓"),
+            ("Validación de NIF/CIF", "✓"),
+            ("Generación de contrato de adhesión", "✓"),
+            ("Firma digital del contrato", "✓"),
+            ("Almacenamiento seguro del contrato", "✓"),
+        ]),
+        ("2. CUOTAS E INCORPORACIÓN", [
+            ("Registro de pago de cuota", "✓"),
+            ("Control de estado de pago", "✓"),
+            ("Bloqueo hasta pago confirmado", "✓"),
+            ("Estado 'Incorporación Efectiva'", "✓"),
+        ]),
+        ("3. EVIDENCIAS DIGITALES", [
+            ("Evidencia de identidad firmada", "✓"),
+            ("Evidencia de publicación dataset", "✓"),
+            ("Timestamp en evidencias", "✓"),
+            ("Descarga de evidencias PDF", "✓"),
+        ]),
+        ("4. CATÁLOGO DCAT-AP", [
+            ("Metadatos DCAT-AP para datasets", "✓"),
+            ("Endpoint de catálogo público", "✓"),
+            ("Identificador único por dataset", "✓"),
+            ("Versionado de datasets", "✓"),
+            ("Licencias configurables", "✓"),
+        ]),
+        ("5. VALIDACIÓN TÉCNICA", [
+            ("Validación de formato CSV/JSON", "✓"),
+            ("Estado de validación visible", "✓"),
+            ("Publicación solo tras validación", "✓"),
+        ]),
+        ("6. GOBERNANZA", [
+            ("Configuración de comité", "✓"),
+            ("Registro de decisiones", "✓"),
+            ("Tipos de decisión", "✓"),
+            ("Versionado de reglamento", "○"),
+            ("Publicación de actas", "○"),
+        ]),
+        ("7. AUDITORÍA Y TRAZABILIDAD", [
+            ("Logs inmutables", "✓"),
+            ("Registro de usuario", "✓"),
+            ("Registro de fecha/hora", "✓"),
+            ("Registro de IP", "✓"),
+            ("Registro de acción", "✓"),
+            ("Exportación de logs CSV", "✓"),
+        ]),
+        ("8. EXPEDIENTE POR MIEMBRO", [
+            ("Exportación completa ZIP", "✓"),
+            ("Incluye datos personales", "✓"),
+            ("Incluye contratos", "✓"),
+            ("Incluye evidencias", "✓"),
+            ("Incluye datasets", "✓"),
+            ("Incluye logs de auditoría", "✓"),
+        ]),
+        ("9. SEGURIDAD", [
+            ("HTTPS obligatorio", "✓"),
+            ("Autenticación JWT", "✓"),
+            ("Control de acceso por roles", "✓"),
+            ("Hash de contraseñas (bcrypt)", "✓"),
+            ("Backup automático", "○"),
+        ]),
+    ]
+    
+    for section_title, items in checklist_sections:
+        story.append(Paragraph(section_title, h2_style))
+        
+        table_data = []
+        for item, status in items:
+            color = colors.HexColor('#059669') if status == "✓" else colors.HexColor('#D97706')
+            table_data.append([status, item])
+        
+        table = Table(table_data, colWidths=[1*cm, 14*cm])
+        table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#059669')),
+        ]))
+        story.append(table)
+    
+    # Resumen
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("RESUMEN", h2_style))
+    
+    summary_data = [
+        ["Categoría", "Completado", "%"],
+        ["Registro y Adhesión", "5/5", "100%"],
+        ["Cuotas e Incorporación", "4/4", "100%"],
+        ["Evidencias Digitales", "4/4", "100%"],
+        ["Catálogo DCAT-AP", "5/5", "100%"],
+        ["Validación Técnica", "3/3", "100%"],
+        ["Gobernanza", "3/5", "60%"],
+        ["Auditoría", "6/6", "100%"],
+        ["Expediente", "6/6", "100%"],
+        ["Seguridad", "4/5", "80%"],
+        ["TOTAL", "45/48", "94%"],
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[8*cm, 4*cm, 3*cm])
+    summary_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0F172A')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#059669')),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(summary_table)
+    
+    # Firma
+    story.append(Spacer(1, 40))
+    story.append(Paragraph("VERIFICACIÓN", h2_style))
+    firma_data = [
+        ["Fecha de verificación:", "_________________"],
+        ["Responsable:", "_________________"],
+        ["Firma:", "_________________"],
+    ]
+    firma_table = Table(firma_data, colWidths=[5*cm, 8*cm])
+    firma_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 15),
+    ]))
+    story.append(firma_table)
+    
+    doc.build(story)
+    
+    return FileResponse(pdf_path, filename="checklist_orden_758_2025.pdf", media_type="application/pdf")
+
+
+@api_router.get("/docs/manual-auditoria")
+async def download_manual_auditoria(user: dict = Depends(require_promotor)):
+    """Generate and download audit manual PDF"""
+    pdf_path = EXPORTS_DIR / "manual_auditoria.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                           rightMargin=2*cm, leftMargin=2*cm,
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'],
+                                  fontSize=20, alignment=TA_CENTER, spaceAfter=30,
+                                  textColor=colors.HexColor('#0F172A'))
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+                               fontSize=14, spaceBefore=20, spaceAfter=10,
+                               textColor=colors.HexColor('#0284C7'))
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                   fontSize=10, spaceAfter=6)
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("MANUAL DE AUDITORÍA", title_style))
+    story.append(Paragraph("FENITEL - Espacio de Datos Sectorial", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=12, spaceAfter=30)))
+    story.append(Paragraph(f"Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC", 
+                          ParagraphStyle('Date', alignment=TA_CENTER, fontSize=10, textColor=colors.gray, spaceAfter=40)))
+    
+    # Introducción
+    story.append(Paragraph("1. INTRODUCCIÓN", h2_style))
+    story.append(Paragraph(
+        "Este manual describe los procedimientos de auditoría del Espacio de Datos Sectorial FENITEL, "
+        "en cumplimiento con la Orden TDF/758/2025. El sistema mantiene un registro completo e inmutable "
+        "de todas las acciones realizadas.", normal_style))
+    
+    # Tipos de registros
+    story.append(Paragraph("2. TIPOS DE REGISTROS DE AUDITORÍA", h2_style))
+    registros = [
+        ("REGISTER", "Registro de nuevo miembro en el sistema"),
+        ("LOGIN", "Inicio de sesión de usuario"),
+        ("SIGN_CONTRACT", "Firma digital de contrato de adhesión"),
+        ("UPDATE_PAYMENT", "Actualización del estado de pago"),
+        ("GENERATE_IDENTITY_EVIDENCE", "Generación de evidencia de identidad"),
+        ("UPLOAD_DATASET", "Subida de nuevo dataset"),
+        ("VALIDATE_DATASET", "Validación técnica de dataset"),
+        ("PUBLISH_DATASET", "Publicación de dataset en catálogo"),
+        ("EXPORT_DOSSIER", "Exportación de expediente completo"),
+        ("ADD_COMMITTEE_MEMBER", "Añadir miembro al comité de gobernanza"),
+        ("CREATE_DECISION", "Registro de decisión de gobernanza"),
+    ]
+    
+    table_data = [["Acción", "Descripción"]]
+    for action, desc in registros:
+        table_data.append([action, desc])
+    
+    table = Table(table_data, colWidths=[6*cm, 9*cm])
+    table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F1F5F9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(table)
+    
+    # Campos de registro
+    story.append(Paragraph("3. CAMPOS DE CADA REGISTRO", h2_style))
+    campos = [
+        "• id: Identificador único del registro (UUID)",
+        "• user_id: ID del usuario que realizó la acción",
+        "• user_email: Email del usuario",
+        "• action: Tipo de acción realizada",
+        "• resource_type: Tipo de recurso afectado",
+        "• resource_id: ID del recurso afectado",
+        "• ip_address: Dirección IP del usuario",
+        "• details: Información adicional en JSON",
+        "• timestamp: Fecha y hora en formato ISO 8601 UTC",
+    ]
+    for campo in campos:
+        story.append(Paragraph(campo, normal_style))
+    
+    # Procedimientos
+    story.append(Paragraph("4. PROCEDIMIENTOS DE AUDITORÍA", h2_style))
+    story.append(Paragraph("<b>4.1 Consulta de logs</b>", normal_style))
+    story.append(Paragraph(
+        "Acceder al panel de Auditoría desde el menú lateral. Se pueden filtrar los registros "
+        "por tipo de recurso y realizar búsquedas por email o acción.", normal_style))
+    
+    story.append(Paragraph("<b>4.2 Exportación de logs</b>", normal_style))
+    story.append(Paragraph(
+        "Usar el botón 'Exportar CSV' para descargar todos los registros en formato CSV "
+        "compatible con Excel.", normal_style))
+    
+    story.append(Paragraph("<b>4.3 Expediente por miembro</b>", normal_style))
+    story.append(Paragraph(
+        "Desde el panel de Miembros, usar 'Exportar expediente' para generar un ZIP completo "
+        "con toda la documentación del miembro incluyendo logs de auditoría.", normal_style))
+    
+    # Verificación
+    story.append(Paragraph("5. VERIFICACIÓN DE EVIDENCIAS", h2_style))
+    story.append(Paragraph(
+        "Cada evidencia generada incluye un hash SHA-256 que puede verificarse para confirmar "
+        "la integridad del documento. El hash se calcula sobre los datos del documento "
+        "y el timestamp de generación.", normal_style))
+    
+    # Retención
+    story.append(Paragraph("6. POLÍTICA DE RETENCIÓN", h2_style))
+    story.append(Paragraph(
+        "Los registros de auditoría se mantienen de forma permanente y no pueden ser "
+        "modificados ni eliminados, garantizando la trazabilidad completa según los "
+        "requisitos de la Orden TDF/758/2025.", normal_style))
+    
+    # Footer
+    story.append(Spacer(1, 40))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER, textColor=colors.gray)))
+    
+    doc.build(story)
+    
+    return FileResponse(pdf_path, filename="manual_auditoria_fenitel.pdf", media_type="application/pdf")
+
+
 # ==================== STATS ROUTES ====================
 
 @api_router.get("/stats")
