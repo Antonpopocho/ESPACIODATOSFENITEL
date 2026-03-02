@@ -159,10 +159,11 @@ class TestDatasets:
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
-    def test_upload_dataset_requires_effective_member(self, member_client):
+    def test_upload_dataset_requires_effective_member(self, member_token):
         """Member without effective incorporation cannot upload"""
+        import requests as req
         csv_content = b"col1,col2\nval1,val2"
-        resp = member_client.post(
+        resp = req.post(
             f"{BASE_URL}/api/datasets",
             data={
                 "title": "TEST_Dataset",
@@ -172,7 +173,7 @@ class TestDatasets:
                 "access_rights": "restricted"
             },
             files={"file": ("test.csv", io.BytesIO(csv_content), "text/csv")},
-            headers={"Authorization": member_client.headers.get("Authorization")}
+            headers={"Authorization": f"Bearer {member_token}"}
         )
         # Should fail - member is not effective provider
         assert resp.status_code in [400, 403]
