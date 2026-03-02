@@ -33,6 +33,7 @@ const promotorMenuItems = [
   { path: '/datasets', icon: Database, label: 'Datasets' },
   { path: '/governance', icon: Shield, label: 'Gobernanza' },
   { path: '/audit', icon: ClipboardList, label: 'Auditoría' },
+  { path: '/documentation', icon: BookOpen, label: 'Documentación' },
 ];
 
 const memberMenuItems = [
