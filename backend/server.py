@@ -847,29 +847,85 @@ async def validate_dataset(dataset_id: str, request: Request, user: dict = Depen
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     
     validation_status = "valid"
+    validation_details = {}
+    
     try:
-        async with aiofiles.open(file_path, 'r') as f:
-            content = await f.read()
+        # Read file with different encodings
+        content = None
+        for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+            try:
+                async with aiofiles.open(file_path, 'r', encoding=encoding) as f:
+                    content = await f.read()
+                validation_details['encoding'] = encoding
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if content is None:
+            # Try reading as binary if all encodings fail
+            async with aiofiles.open(file_path, 'rb') as f:
+                raw_content = await f.read()
+            content = raw_content.decode('utf-8', errors='replace')
+            validation_details['encoding'] = 'utf-8 (with replacements)'
         
         if dataset["file_type"] == "csv":
-            reader = csv.reader(io.StringIO(content))
+            # Detect delimiter (try common ones: comma, semicolon, tab)
+            first_line = content.split('\n')[0] if content else ''
+            delimiter = ','
+            if first_line.count(';') > first_line.count(','):
+                delimiter = ';'
+            elif first_line.count('\t') > first_line.count(','):
+                delimiter = '\t'
+            
+            validation_details['delimiter'] = delimiter
+            
+            # Parse CSV with detected delimiter
+            reader = csv.reader(io.StringIO(content), delimiter=delimiter)
             rows = list(reader)
-            if len(rows) == 0:
+            
+            # Count non-empty rows
+            non_empty_rows = [r for r in rows if any(cell.strip() for cell in r)]
+            validation_details['total_rows'] = len(rows)
+            validation_details['non_empty_rows'] = len(non_empty_rows)
+            
+            if len(non_empty_rows) == 0:
                 validation_status = "invalid"
+                validation_details['error'] = "No se encontraron filas con datos"
+            else:
+                # Get column count from first non-empty row
+                if non_empty_rows:
+                    validation_details['columns'] = len(non_empty_rows[0])
+                validation_status = "valid"
+                
         elif dataset["file_type"] == "json":
-            json.loads(content)
-    except Exception:
+            data = json.loads(content)
+            if isinstance(data, list):
+                validation_details['items'] = len(data)
+            elif isinstance(data, dict):
+                validation_details['keys'] = len(data.keys())
+            validation_status = "valid"
+            
+    except json.JSONDecodeError as e:
         validation_status = "invalid"
+        validation_details['error'] = f"JSON inválido: {str(e)}"
+    except Exception as e:
+        validation_status = "invalid"
+        validation_details['error'] = str(e)
+        logger.error(f"Dataset validation error: {e}")
     
     await db.datasets.update_one(
         {"id": dataset_id},
-        {"$set": {"validation_status": validation_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {
+            "validation_status": validation_status, 
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "validation_details": validation_details
+        }}
     )
     
     await log_audit(request, user["id"], user["email"], "VALIDATE_DATASET", "dataset", dataset_id,
-                   {"validation_status": validation_status})
+                   {"validation_status": validation_status, "details": validation_details})
     
-    return {"validation_status": validation_status}
+    return {"validation_status": validation_status, "details": validation_details}
 
 @api_router.put("/datasets/{dataset_id}/publish")
 async def publish_dataset(dataset_id: str, request: Request, user: dict = Depends(require_promotor)):
