@@ -66,7 +66,16 @@ code, .font-mono {
     }
 }
 
-/* Custom scrollbar */
+/* Hide Emergent badge */
+#emergent-badge,
+[id*="emergent"],
+a[href*="emergent.sh"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
