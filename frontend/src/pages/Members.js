@@ -30,7 +30,8 @@ import {
   Loader2,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Award
 } from 'lucide-react';
 import { formatDate, getStatusLabel, getStatusClass, downloadBlob } from '../lib/utils';
 import { toast } from 'sonner';
@@ -98,6 +99,19 @@ export default function Members() {
       toast.success('Expediente descargado');
     } catch (error) {
       toast.error('Error al exportar expediente');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDownloadRegistrationCertificate = async (memberId, memberNif) => {
+    setActionLoading(true);
+    try {
+      const response = await membersApi.downloadRegistrationCertificate(memberId);
+      downloadBlob(response.data, `certificado_registro_${memberNif}.pdf`);
+      toast.success('Certificado de registro descargado');
+    } catch (error) {
+      toast.error('Error al descargar certificado');
     } finally {
       setActionLoading(false);
     }
@@ -195,6 +209,13 @@ export default function Members() {
                             <DropdownMenuItem onClick={() => openDetails(member)}>
                               <Users className="mr-2 h-4 w-4" />
                               Ver detalles
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDownloadRegistrationCertificate(member.id, member.nif)}
+                              disabled={actionLoading}
+                            >
+                              <Award className="mr-2 h-4 w-4" />
+                              Descargar certificado registro
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => handleToggleProvider(member.id)}

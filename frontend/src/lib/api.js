@@ -46,8 +46,10 @@ export const authApi = {
 // Members
 export const membersApi = {
   list: () => api.get('/members'),
+  listExtended: () => api.get('/members/extended'),
   get: (id) => api.get(`/members/${id}`),
   toggleProvider: (id) => api.put(`/members/${id}/provider`),
+  downloadRegistrationCertificate: (id) => api.get(`/members/${id}/registration-certificate`, { responseType: 'blob' }),
 };
 
 // Contracts
@@ -80,6 +82,7 @@ export const datasetsApi = {
   validate: (id) => api.put(`/datasets/${id}/validate`),
   publish: (id) => api.put(`/datasets/${id}/publish`),
   download: (id) => api.get(`/datasets/${id}/download`, { responseType: 'blob' }),
+  downloadPublicationCertificate: (id) => api.get(`/datasets/${id}/publication-certificate`, { responseType: 'blob' }),
 };
 
 // Audit
@@ -112,6 +115,8 @@ export const docsApi = {
   downloadManualDespliegue: () => api.get('/docs/manual-despliegue', { responseType: 'blob' }),
   downloadChecklist: () => api.get('/docs/checklist-758', { responseType: 'blob' }),
   downloadManualAuditoria: () => api.get('/docs/manual-auditoria', { responseType: 'blob' }),
+  downloadInformeEvidencias: () => api.get('/docs/informe-evidencias', { responseType: 'blob' }),
+  downloadDiagramaFlujo: () => api.get('/docs/diagrama-flujo', { responseType: 'blob' }),
 };
 
 export default api;

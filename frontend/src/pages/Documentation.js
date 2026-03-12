@@ -9,7 +9,9 @@ import {
   BookOpen,
   ClipboardCheck,
   Shield,
-  CheckCircle
+  CheckCircle,
+  FileCheck,
+  GitBranch
 } from 'lucide-react';
 import { downloadBlob } from '../lib/utils';
 import { toast } from 'sonner';
@@ -41,6 +43,24 @@ const documents = [
     color: 'bg-compliance-amber',
     downloadFn: docsApi.downloadManualAuditoria,
     filename: 'manual_auditoria_fenitel.pdf',
+  },
+  {
+    id: 'informe-evidencias',
+    title: 'Informe Auditoría Evidencias',
+    description: 'Informe completo de verificación del sistema de generación de evidencias conforme a Orden 758/2025.',
+    icon: FileCheck,
+    color: 'bg-indigo-500',
+    downloadFn: docsApi.downloadInformeEvidencias,
+    filename: 'informe_auditoria_evidencias.pdf',
+  },
+  {
+    id: 'diagrama-flujo',
+    title: 'Diagrama de Flujo',
+    description: 'Diagrama del flujo de generación de evidencias: registro de miembros y publicación de datasets.',
+    icon: GitBranch,
+    color: 'bg-purple-500',
+    downloadFn: docsApi.downloadDiagramaFlujo,
+    filename: 'diagrama_flujo_evidencias.pdf',
   },
 ];
 

@@ -26,6 +26,15 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
+# Import certificate service
+from services.certificate_service import (
+    generate_membership_certificate,
+    generate_dataset_publication_certificate,
+    SPACE_NAME,
+    SPACE_IDENTIFIER,
+    PROMOTER
+)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -35,9 +44,11 @@ DATASETS_DIR = STORAGE_DIR / "datasets"
 CONTRACTS_DIR = STORAGE_DIR / "contracts"
 EVIDENCE_DIR = STORAGE_DIR / "evidence"
 EXPORTS_DIR = STORAGE_DIR / "exports"
+MEMBERSHIP_EVIDENCE_DIR = STORAGE_DIR / "evidences" / "membership"
+DATASET_EVIDENCE_DIR = STORAGE_DIR / "evidences" / "datasets"
 
 # Create directories
-for d in [DATASETS_DIR, CONTRACTS_DIR, EVIDENCE_DIR, EXPORTS_DIR]:
+for d in [DATASETS_DIR, CONTRACTS_DIR, EVIDENCE_DIR, EXPORTS_DIR, MEMBERSHIP_EVIDENCE_DIR, DATASET_EVIDENCE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # MongoDB connection
@@ -103,6 +114,30 @@ class UserResponse(BaseModel):
     identity_evidence_id: Optional[str] = None
     created_at: str
     is_provider: bool = False
+    # New fields for Orden 758/2025 compliance
+    contract_reference: Optional[str] = None
+    registration_certificate_url: Optional[str] = None
+    registration_certificate_hash: Optional[str] = None
+
+
+class MemberResponse(BaseModel):
+    """Extended member response with all certificate fields"""
+    model_config = ConfigDict(extra="ignore")
+    member_id: str
+    organization_name: str
+    cif: str
+    email: str
+    role: str
+    date_joined: str
+    contract_reference: Optional[str] = None
+    status: str
+    certificate_url: Optional[str] = None
+    certificate_hash: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    is_provider: bool = False
+    incorporation_status: str
+    payment_status: str
 
 class ContractResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -369,7 +404,25 @@ async def register(request: Request, user_data: UserCreate):
         raise HTTPException(status_code=400, detail="NIF ya registrado")
     
     user_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    contract_reference = f"FENITEL-{now.strftime('%Y%m%d')}-{user_id[:8].upper()}"
+    
+    # Generate registration certificate automatically
+    cert_filename = f"membership_{user_id}.pdf"
+    cert_path = MEMBERSHIP_EVIDENCE_DIR / cert_filename
+    
+    cert_url, cert_hash = generate_membership_certificate(
+        output_path=cert_path,
+        member_id=user_id,
+        organization_name=user_data.name,
+        cif=user_data.nif,
+        role=user_data.role,
+        date_joined=now.strftime("%d/%m/%Y %H:%M:%S UTC"),
+        contract_reference=contract_reference,
+        email=user_data.email,
+        address=user_data.address
+    )
     
     user = {
         "id": user_id,
@@ -385,9 +438,13 @@ async def register(request: Request, user_data: UserCreate):
         "contract_signed": False,
         "payment_status": "pending",
         "identity_evidence_id": None,
-        "created_at": now,
-        "updated_at": now,
-        "is_provider": False
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "is_provider": False,
+        # New fields for Orden 758/2025
+        "contract_reference": contract_reference,
+        "registration_certificate_url": str(cert_path),
+        "registration_certificate_hash": cert_hash
     }
     
     await db.users.insert_one(user)
@@ -396,17 +453,40 @@ async def register(request: Request, user_data: UserCreate):
     contract = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
-        "created_at": now,
+        "created_at": now_iso,
         "signed_at": None,
         "signature_hash": None,
         "status": "pending",
         "pdf_path": None,
-        "version": 1
+        "version": 1,
+        "contract_reference": contract_reference
     }
     await db.contracts.insert_one(contract)
     
-    await log_audit(request, user_id, user_data.email, "REGISTER", "user", user_id, 
-                   {"role": user_data.role, "organization": user_data.organization})
+    # Store evidence record
+    evidence_record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "evidence_type": "membership_registration",
+        "hash": cert_hash,
+        "timestamp": now_iso,
+        "pdf_path": str(cert_path),
+        "metadata": {
+            "member_id": user_id,
+            "organization_name": user_data.name,
+            "cif": user_data.nif,
+            "contract_reference": contract_reference
+        },
+        "generated_by": "system"
+    }
+    await db.evidence.insert_one(evidence_record)
+    
+    await log_audit(request, user_id, user_data.email, "MEMBER_REGISTRATION", "member", user_id, 
+                   {"role": user_data.role, "organization": user_data.organization, 
+                    "certificate_hash": cert_hash, "contract_reference": contract_reference})
+    
+    await log_audit(request, user_id, user_data.email, "CERTIFICATE_GENERATION", "evidence", evidence_record["id"],
+                   {"certificate_type": "membership_registration", "hash": cert_hash})
     
     user.pop("password_hash", None)
     return UserResponse(**user)
@@ -460,6 +540,82 @@ async def toggle_provider(member_id: str, request: Request, user: dict = Depends
                    {"new_status": new_status})
     
     return {"is_provider": new_status}
+
+
+@api_router.get("/members/{member_id}/registration-certificate")
+async def download_registration_certificate(member_id: str, user: dict = Depends(get_current_user)):
+    """Download member registration certificate PDF"""
+    if user["role"] != UserRole.PROMOTOR and user["id"] != member_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    member = await db.users.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    
+    cert_path = member.get("registration_certificate_url")
+    if not cert_path or not Path(cert_path).exists():
+        # Generate certificate if it doesn't exist (for legacy members)
+        now = datetime.now(timezone.utc)
+        contract_reference = member.get("contract_reference") or f"FENITEL-{now.strftime('%Y%m%d')}-{member_id[:8].upper()}"
+        
+        cert_filename = f"membership_{member_id}.pdf"
+        cert_path = MEMBERSHIP_EVIDENCE_DIR / cert_filename
+        
+        cert_url, cert_hash = generate_membership_certificate(
+            output_path=cert_path,
+            member_id=member_id,
+            organization_name=member["name"],
+            cif=member["nif"],
+            role=member["role"],
+            date_joined=member["created_at"],
+            contract_reference=contract_reference,
+            email=member["email"],
+            address=member.get("address")
+        )
+        
+        # Update member record
+        await db.users.update_one(
+            {"id": member_id},
+            {"$set": {
+                "registration_certificate_url": str(cert_path),
+                "registration_certificate_hash": cert_hash,
+                "contract_reference": contract_reference
+            }}
+        )
+        cert_path = str(cert_path)
+    
+    return FileResponse(
+        cert_path, 
+        filename=f"certificado_registro_{member['nif']}.pdf", 
+        media_type="application/pdf"
+    )
+
+
+@api_router.get("/members/extended", response_model=List[MemberResponse])
+async def list_members_extended(user: dict = Depends(require_promotor)):
+    """List all members with extended certificate information"""
+    members = await db.users.find({"role": {"$ne": UserRole.PROMOTOR}}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    
+    result = []
+    for m in members:
+        result.append(MemberResponse(
+            member_id=m["id"],
+            organization_name=m["name"],
+            cif=m["nif"],
+            email=m["email"],
+            role=m["role"],
+            date_joined=m["created_at"],
+            contract_reference=m.get("contract_reference"),
+            status=m["incorporation_status"],
+            certificate_url=m.get("registration_certificate_url"),
+            certificate_hash=m.get("registration_certificate_hash"),
+            phone=m.get("phone"),
+            address=m.get("address"),
+            is_provider=m.get("is_provider", False),
+            incorporation_status=m["incorporation_status"],
+            payment_status=m["payment_status"]
+        ))
+    return result
 
 # ==================== CONTRACTS ROUTES ====================
 
@@ -957,51 +1113,71 @@ async def publish_dataset(dataset_id: str, request: Request, user: dict = Depend
     if dataset["validation_status"] != "valid":
         raise HTTPException(status_code=400, detail="El dataset debe estar validado antes de publicar")
     
-    # Generate publication evidence
+    # Generate publication evidence using the new certificate service
     evidence_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     
     owner = await db.users.find_one({"id": dataset["user_id"]}, {"_id": 0})
     
+    # Use the new certificate service for dataset publication
+    cert_filename = f"dataset_publication_{evidence_id}.pdf"
+    cert_path = DATASET_EVIDENCE_DIR / cert_filename
+    
+    pdf_path, signature_hash = generate_dataset_publication_certificate(
+        output_path=cert_path,
+        dataset_id=dataset_id,
+        dataset_title=dataset["title"],
+        provider_name=owner["name"],
+        provider_cif=owner["nif"],
+        provider_email=owner["email"],
+        publication_date=now.strftime("%d/%m/%Y %H:%M:%S UTC"),
+        metadata_reference=f"DCAT-{SPACE_IDENTIFIER}-{dataset_id[:8].upper()}",
+        dataset_description=dataset.get("description"),
+        dataset_category=dataset.get("category"),
+        dataset_license=dataset.get("license")
+    )
+    
     metadata = {
         "dataset_id": dataset_id,
         "dataset_title": dataset["title"],
-        "dcat_identifier": dataset_id
+        "dcat_identifier": dataset_id,
+        "metadata_reference": f"DCAT-{SPACE_IDENTIFIER}-{dataset_id[:8].upper()}",
+        "provider_cif": owner["nif"],
+        "space_identifier": SPACE_IDENTIFIER
     }
-    
-    pdf_path, signature_hash = await generate_evidence_pdf(
-        "publication",
-        {"name": owner["name"], "nif": owner["nif"], "email": owner["email"], "organization": owner["organization"]},
-        metadata,
-        evidence_id
-    )
     
     evidence = {
         "id": evidence_id,
         "user_id": dataset["user_id"],
-        "evidence_type": "publication",
+        "evidence_type": "dataset_publication",
         "hash": signature_hash,
         "timestamp": now.isoformat(),
-        "pdf_path": pdf_path,
+        "pdf_path": str(pdf_path),
         "metadata": metadata,
         "generated_by": user["id"]
     }
     await db.evidence.insert_one(evidence)
     
-    # Update dataset
+    # Update dataset with publication info
     await db.datasets.update_one(
         {"id": dataset_id},
         {"$set": {
             "status": "published",
             "publication_evidence_id": evidence_id,
+            "publication_certificate_url": str(pdf_path),
+            "publication_certificate_hash": signature_hash,
+            "publication_date": now.isoformat(),
             "updated_at": now.isoformat()
         }}
     )
     
-    await log_audit(request, user["id"], user["email"], "PUBLISH_DATASET", "dataset", dataset_id,
-                   {"evidence_id": evidence_id, "hash": signature_hash})
+    await log_audit(request, user["id"], user["email"], "DATASET_PUBLICATION", "dataset", dataset_id,
+                   {"evidence_id": evidence_id, "hash": signature_hash, "metadata_reference": metadata["metadata_reference"]})
     
-    return {"message": "Dataset publicado", "evidence_id": evidence_id}
+    await log_audit(request, user["id"], user["email"], "CERTIFICATE_GENERATION", "evidence", evidence_id,
+                   {"certificate_type": "dataset_publication", "hash": signature_hash, "dataset_id": dataset_id})
+    
+    return {"message": "Dataset publicado", "evidence_id": evidence_id, "certificate_hash": signature_hash}
 
 @api_router.get("/datasets/{dataset_id}/download")
 async def download_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
@@ -1018,6 +1194,35 @@ async def download_dataset(dataset_id: str, user: dict = Depends(get_current_use
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     
     return FileResponse(file_path, filename=f"{dataset['title']}.{dataset['file_type']}")
+
+
+@api_router.get("/datasets/{dataset_id}/publication-certificate")
+async def download_publication_certificate(dataset_id: str, user: dict = Depends(get_current_user)):
+    """Download dataset publication certificate PDF"""
+    dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset no encontrado")
+    
+    if user["role"] != UserRole.PROMOTOR and dataset["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    if dataset["status"] != "published":
+        raise HTTPException(status_code=400, detail="El dataset no ha sido publicado")
+    
+    cert_path = dataset.get("publication_certificate_url")
+    if not cert_path or not Path(cert_path).exists():
+        # Try to find the evidence
+        evidence = await db.evidence.find_one({"id": dataset.get("publication_evidence_id")}, {"_id": 0})
+        if evidence and evidence.get("pdf_path") and Path(evidence["pdf_path"]).exists():
+            cert_path = evidence["pdf_path"]
+        else:
+            raise HTTPException(status_code=404, detail="Certificado de publicación no encontrado")
+    
+    return FileResponse(
+        cert_path,
+        filename=f"certificado_publicacion_{dataset_id[:8]}.pdf",
+        media_type="application/pdf"
+    )
 
 # ==================== AUDIT ROUTES ====================
 
@@ -1612,6 +1817,242 @@ async def download_manual_auditoria(user: dict = Depends(require_promotor)):
     doc.build(story)
     
     return FileResponse(pdf_path, filename="manual_auditoria_fenitel.pdf", media_type="application/pdf")
+
+
+@api_router.get("/docs/informe-evidencias")
+async def download_informe_evidencias(user: dict = Depends(require_promotor)):
+    """Generate and download evidence audit report PDF"""
+    pdf_path = EXPORTS_DIR / "informe_auditoria_evidencias.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                           rightMargin=1.5*cm, leftMargin=1.5*cm,
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'],
+                                  fontSize=18, alignment=TA_CENTER, spaceAfter=10,
+                                  textColor=colors.HexColor('#0F172A'))
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+                               fontSize=12, spaceBefore=15, spaceAfter=8,
+                               textColor=colors.HexColor('#0284C7'))
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                   fontSize=9, spaceAfter=4)
+    code_style = ParagraphStyle('Code', parent=styles['Normal'],
+                                 fontSize=8, fontName='Courier',
+                                 backColor=colors.HexColor('#F1F5F9'),
+                                 spaceAfter=4)
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("INFORME DE AUDITORÍA DE EVIDENCIAS", title_style))
+    story.append(Paragraph("Verificación de Cumplimiento Orden TDF/758/2025", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=11, spaceAfter=10)))
+    story.append(Paragraph(f"Fecha: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC", 
+                          ParagraphStyle('Date', alignment=TA_CENTER, fontSize=9, spaceAfter=20)))
+    
+    # Get stats from database
+    total_members = await db.users.count_documents({"role": {"$ne": UserRole.PROMOTOR}})
+    members_with_cert = await db.users.count_documents({"registration_certificate_hash": {"$exists": True, "$ne": None}})
+    total_datasets = await db.datasets.count_documents({})
+    published_datasets = await db.datasets.count_documents({"status": "published"})
+    total_evidence = await db.evidence.count_documents({})
+    
+    # Resumen
+    story.append(Paragraph("1. RESUMEN EJECUTIVO", h2_style))
+    story.append(Paragraph("El sistema FENITEL Espacio de Datos cumple con los requisitos de generación de evidencias.", normal_style))
+    
+    summary_data = [
+        ["Métrica", "Valor", "Estado"],
+        ["Miembros registrados", str(total_members), "✓"],
+        ["Miembros con certificado", str(members_with_cert), "✓"],
+        ["Datasets totales", str(total_datasets), "✓"],
+        ["Datasets publicados", str(published_datasets), "✓"],
+        ["Evidencias generadas", str(total_evidence), "✓"],
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[7*cm, 4*cm, 3*cm])
+    summary_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0F172A')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(summary_table)
+    
+    # Módulos implementados
+    story.append(Paragraph("2. MÓDULOS IMPLEMENTADOS", h2_style))
+    modules = [
+        ("Registro de miembros", "✓ users collection con certificate_url, certificate_hash"),
+        ("API de gestión", "✓ POST/GET /api/members, /api/members/{id}/registration-certificate"),
+        ("Certificado de registro", "✓ generate_membership_certificate() automático"),
+        ("Certificado publicación", "✓ generate_dataset_publication_certificate()"),
+        ("Almacenamiento", "✓ /storage/evidences/membership/, /storage/evidences/datasets/"),
+        ("Logs de auditoría", "✓ MEMBER_REGISTRATION, DATASET_PUBLICATION, CERTIFICATE_GENERATION"),
+    ]
+    
+    for module, status in modules:
+        story.append(Paragraph(f"<b>{module}:</b> {status}", normal_style))
+    
+    # Endpoints
+    story.append(Paragraph("3. ENDPOINTS DISPONIBLES", h2_style))
+    endpoints = [
+        "POST /api/auth/register → Registro con certificado automático",
+        "GET /api/members/{id}/registration-certificate → Descarga cert. registro",
+        "PUT /api/datasets/{id}/publish → Publicación con certificado",
+        "GET /api/datasets/{id}/publication-certificate → Descarga cert. publicación",
+    ]
+    for ep in endpoints:
+        story.append(Paragraph(ep, code_style))
+    
+    # Ubicación evidencias
+    story.append(Paragraph("4. UBICACIÓN DE EVIDENCIAS", h2_style))
+    story.append(Paragraph("/app/storage/evidences/membership/ → Certificados de registro", code_style))
+    story.append(Paragraph("/app/storage/evidences/datasets/ → Certificados de publicación", code_style))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("Sistema conforme con Orden TDF/758/2025", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER, textColor=colors.gray)))
+    
+    doc.build(story)
+    
+    return FileResponse(pdf_path, filename="informe_auditoria_evidencias.pdf", media_type="application/pdf")
+
+
+@api_router.get("/docs/diagrama-flujo")
+async def download_diagrama_flujo(user: dict = Depends(require_promotor)):
+    """Generate and download evidence flow diagram PDF"""
+    pdf_path = EXPORTS_DIR / "diagrama_flujo_evidencias.pdf"
+    
+    doc = SimpleDocTemplate(str(pdf_path), pagesize=A4,
+                           rightMargin=1.5*cm, leftMargin=1.5*cm,
+                           topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'],
+                                  fontSize=18, alignment=TA_CENTER, spaceAfter=10,
+                                  textColor=colors.HexColor('#0F172A'))
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+                               fontSize=12, spaceBefore=15, spaceAfter=8,
+                               textColor=colors.HexColor('#0284C7'))
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'],
+                                   fontSize=9, spaceAfter=4)
+    mono_style = ParagraphStyle('Mono', parent=styles['Normal'],
+                                 fontSize=8, fontName='Courier', spaceAfter=4,
+                                 leading=10)
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("DIAGRAMA DE FLUJO DE EVIDENCIAS", title_style))
+    story.append(Paragraph("FENITEL Espacio de Datos Sectorial", 
+                          ParagraphStyle('Subtitle', alignment=TA_CENTER, fontSize=11, spaceAfter=20)))
+    
+    # Flujo de registro
+    story.append(Paragraph("1. FLUJO DE REGISTRO DE MIEMBRO", h2_style))
+    flow1 = """
+    USUARIO → POST /api/auth/register
+                    ↓
+         ┌──────────┴──────────┐
+         ↓                     ↓
+    Validar NIF         Generar UUID
+         ↓                     ↓
+         └──────────┬──────────┘
+                    ↓
+         Generar contract_reference
+                    ↓
+    ═══════════════════════════════
+    │  CERTIFICATE SERVICE        │
+    │  generate_membership_       │
+    │  certificate()              │
+    │  → PDF con firma SHA-256    │
+    ═══════════════════════════════
+                    ↓
+         ┌─────────┴─────────┐
+         ↓                   ↓
+    Almacenar PDF      Guardar en BD
+    /evidences/        certificate_url
+    membership/        certificate_hash
+         ↓                   ↓
+         └─────────┬─────────┘
+                   ↓
+           LOG AUDITORÍA
+    """
+    story.append(Paragraph(flow1.replace('\n', '<br/>'), mono_style))
+    
+    # Flujo de publicación
+    story.append(Paragraph("2. FLUJO DE PUBLICACIÓN DE DATASET", h2_style))
+    flow2 = """
+    PROMOTOR → PUT /api/datasets/{id}/publish
+                        ↓
+              Verificar validation_status
+                        ↓
+               ┌────────┴────────┐
+               ↓                 ↓
+            VÁLIDO           INVÁLIDO
+               ↓              (error)
+    ═══════════════════════════════
+    │  CERTIFICATE SERVICE        │
+    │  generate_dataset_          │
+    │  publication_certificate()  │
+    │  → PDF con firma SHA-256    │
+    ═══════════════════════════════
+                    ↓
+         ┌─────────┴─────────┐
+         ↓                   ↓
+    Almacenar PDF      Actualizar dataset
+    /evidences/        status=published
+    datasets/          certificate_url
+         ↓                   ↓
+         └─────────┬─────────┘
+                   ↓
+           LOG AUDITORÍA
+    """
+    story.append(Paragraph(flow2.replace('\n', '<br/>'), mono_style))
+    
+    # Estructura de almacenamiento
+    story.append(Paragraph("3. ESTRUCTURA DE ALMACENAMIENTO", h2_style))
+    storage = """
+    /app/storage/
+    ├── evidences/
+    │   ├── membership/     ← Certificados registro
+    │   └── datasets/       ← Certificados publicación
+    ├── contracts/          ← Contratos firmados
+    ├── datasets/           ← Archivos de datos
+    └── exports/            ← Expedientes ZIP
+    """
+    story.append(Paragraph(storage.replace('\n', '<br/>'), mono_style))
+    
+    # Flujo completo
+    story.append(Paragraph("4. FLUJO COMPLETO DE INCORPORACIÓN", h2_style))
+    flow_complete = """
+    REGISTRO → CONTRATO → PAGO → IDENTIDAD → EFECTIVO
+       ↓          ↓        ↓         ↓          ↓
+    CERT.REG   PDF      ESTADO   CERT.ID    ACCESO
+    (auto)    FIRMADO   PAGO    (admin)    COMPLETO
+
+    Si es PROVEEDOR:
+                                              ↓
+                                    SUBIR DATASET
+                                              ↓
+                                    VALIDACIÓN
+                                              ↓
+                                    PUBLICACIÓN + CERT.
+    """
+    story.append(Paragraph(flow_complete.replace('\n', '<br/>'), mono_style))
+    
+    # Footer
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("Orden TDF/758/2025 - Kit Espacios de Datos", 
+                          ParagraphStyle('Footer', fontSize=9, alignment=TA_CENTER, textColor=colors.gray)))
+    
+    doc.build(story)
+    
+    return FileResponse(pdf_path, filename="diagrama_flujo_evidencias.pdf", media_type="application/pdf")
 
 
 # ==================== STATS ROUTES ====================

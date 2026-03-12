@@ -29,7 +29,8 @@ import {
   Eye,
   Download,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  Award
 } from 'lucide-react';
 import { formatDate, formatDateTime, getStatusLabel, getStatusClass, downloadBlob } from '../lib/utils';
 import { toast } from 'sonner';
@@ -99,6 +100,16 @@ export default function Datasets() {
       downloadBlob(response.data, `${dataset.title}.${dataset.file_type}`);
     } catch (error) {
       toast.error('Error al descargar dataset');
+    }
+  };
+
+  const handleDownloadPublicationCertificate = async (dataset) => {
+    try {
+      const response = await datasetsApi.downloadPublicationCertificate(dataset.id);
+      downloadBlob(response.data, `certificado_publicacion_${dataset.id.slice(0, 8)}.pdf`);
+      toast.success('Certificado de publicación descargado');
+    } catch (error) {
+      toast.error('Error al descargar certificado de publicación');
     }
   };
 
@@ -271,6 +282,12 @@ export default function Datasets() {
                               <Download className="mr-2 h-4 w-4" />
                               Descargar
                             </DropdownMenuItem>
+                            {dataset.status === 'published' && (
+                              <DropdownMenuItem onClick={() => handleDownloadPublicationCertificate(dataset)}>
+                                <Award className="mr-2 h-4 w-4" />
+                                Certificado publicación
+                              </DropdownMenuItem>
+                            )}
                             {dataset.status === 'draft' && (
                               <>
                                 <DropdownMenuItem 
