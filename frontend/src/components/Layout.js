@@ -31,6 +31,7 @@ const promotorMenuItems = [
   { path: '/members', icon: Users, label: 'Miembros' },
   { path: '/payments', icon: CreditCard, label: 'Pagos' },
   { path: '/datasets', icon: Database, label: 'Datasets' },
+  { path: '/catalog', icon: Database, label: 'Catálogo Sectorial' },
   { path: '/governance', icon: Shield, label: 'Gobernanza' },
   { path: '/audit', icon: ClipboardList, label: 'Auditoría' },
   { path: '/documentation', icon: BookOpen, label: 'Documentación' },
@@ -41,7 +42,7 @@ const memberMenuItems = [
   { path: '/my-contract', icon: FileText, label: 'Mi Contrato' },
   { path: '/my-datasets', icon: Database, label: 'Mis Datasets' },
   { path: '/my-evidence', icon: FileCheck, label: 'Mis Evidencias' },
-  { path: '/catalog', icon: Database, label: 'Catálogo' },
+  { path: '/catalog', icon: Database, label: 'Catálogo Sectorial' },
 ];
 
 export default function Layout({ children }) {

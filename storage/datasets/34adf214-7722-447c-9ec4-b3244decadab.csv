@@ -1,0 +1,17 @@
+
+"Equipment name";"Equipment SN";"Company";"Technician";"Date"
+"ATLaS NG 6G";"010178548";"";"";"01-01-70"
+
+"Report name";"Customer";"Notes"
+"FM";"";""
+
+"Testpoint";"Channel plan";"Date / hour"
+"FM";"Fm";"04-03-26 15:30:59"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"RAC1    ";87;"fm";54.7;7.4;;;;;-0.1;LOCKED
+"RNE 1   ";88;"fm";53.2;6.6;;;;;-0.0;LOCKED
+"FLAIXBAC";106;"fm";59.8;12.4;;;;;-0.1;LOCKED
+
+
+

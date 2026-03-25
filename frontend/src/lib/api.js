@@ -79,6 +79,7 @@ export const datasetsApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   getCatalog: () => api.get('/datasets/catalog'),
+  getFullCatalog: () => api.get('/datasets/catalog/full'),
   validate: (id) => api.put(`/datasets/${id}/validate`),
   publish: (id) => api.put(`/datasets/${id}/publish`),
   download: (id) => api.get(`/datasets/${id}/download`, { responseType: 'blob' }),

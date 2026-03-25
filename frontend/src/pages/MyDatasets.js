@@ -296,10 +296,11 @@ export default function MyDatasets() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="UTP">UTP - Cableado Estructurado</SelectItem>
+                    <SelectItem value="ICT">ICT - Infraestructuras Comunes</SelectItem>
+                    <SelectItem value="FM">FM - Radiodifusión</SelectItem>
+                    <SelectItem value="SAT">SAT - Comunicaciones Satélite</SelectItem>
                     <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="infraestructura">Infraestructura</SelectItem>
-                    <SelectItem value="servicios">Servicios</SelectItem>
-                    <SelectItem value="estadisticas">Estadísticas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

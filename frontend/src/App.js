@@ -12,6 +12,7 @@ import MyContract from './pages/MyContract';
 import MyDatasets from './pages/MyDatasets';
 import MyEvidence from './pages/MyEvidence';
 import Datasets from './pages/Datasets';
+import Catalog from './pages/Catalog';
 import Governance from './pages/Governance';
 import Audit from './pages/Audit';
 import Documentation from './pages/Documentation';
@@ -71,7 +72,7 @@ function AppRoutes() {
       <Route path="/my-contract" element={<ProtectedRoute><MyContract /></ProtectedRoute>} />
       <Route path="/my-datasets" element={<ProtectedRoute><MyDatasets /></ProtectedRoute>} />
       <Route path="/my-evidence" element={<ProtectedRoute><MyEvidence /></ProtectedRoute>} />
-      <Route path="/catalog" element={<ProtectedRoute><Datasets /></ProtectedRoute>} />
+      <Route path="/catalog" element={<ProtectedRoute><Catalog /></ProtectedRoute>} />
 
       {/* Protected Routes - Promotor Only */}
       <Route path="/members" element={<ProtectedRoute requirePromotor><Members /></ProtectedRoute>} />

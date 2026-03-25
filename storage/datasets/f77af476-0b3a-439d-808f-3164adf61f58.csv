@@ -1,0 +1,71 @@
+
+"Equipment name";"Equipment SN";"Company";"Technician";"Date"
+"ATLaS NG 6G";"010178548";"";"";"01-01-70"
+
+"Report name";"Customer";"Notes"
+"ICTgeneric";"";""
+
+"Testpoint";"Channel plan";"Date / hour"
+"Cabecera";"Fm";"04-03-26 15:22:05"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"RAC1    ";87;"fm";53.4;5.8;;;;;-0.1;LOCKED
+"RNE 1   ";88;"fm";52.6;6.2;;;;;-0.0;LOCKED
+"FLAIXBAC";106;"fm";60.3;12.7;;;;;-0.1;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Cabecera";"DAB ICT2";"04-03-26 15:22:05"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"8A";195;"dab";54.3;29.2;14.0;;2.e-03;;-14.0;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Cabecera";"Terrestre jfbarril";"04-03-26 15:22:05"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"31";554;"dvbt";53.0;32.2;26.0;10.4;4.e-04;1.e-07;-0.0;LOCKED
+"41";634;"dvbt";57.4;34.4;28.8;13.2;3.e-05;1.e-07;-0.0;LOCKED
+"44";658;"dvbt";57.6;32.0;27.6;12.0;3.e-04;1.e-07;-0.0;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Cabecera";"Sat jfbarril";"04-03-26 15:22:05"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"CH 1";10726;"dvbs2";78.9;16.5;12.4;4.4;5.e-03;1.e-07;771.0;LOCKED
+"CH 14";11399;"dvbs2";74.0;13.1;13.8;5.8;2.e-03;1.e-07;-488.0;LOCKED
+"CH 19";11668;"dvbs2";72.0;11.8;11.7;5.0;1.e-02;1.e-07;265.0;LOCKED
+
+
+
+"Testpoint";"Channel plan";"Date / hour"
+"Bajos";"Fm";"04-03-26 15:24:12"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"RAC1    ";87;"fm";52.7;5.2;;;;;-0.1;LOCKED
+"RNE 1   ";88;"fm";51.7;5.0;;;;;-0.0;LOCKED
+"FLAIXBAC";106;"fm";60.6;12.4;;;;;-0.1;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Bajos";"DAB ICT2";"04-03-26 15:24:12"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"8A";195;"dab";51.5;23.8;9.2;;1.e-02;;-14.0;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Bajos";"Terrestre jfbarril";"04-03-26 15:24:12"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"31";554;"dvbt";52.9;32.2;26.6;11.0;4.e-04;1.e-07;-0.0;LOCKED
+"41";634;"dvbt";57.4;35.0;28.5;12.9;5.e-05;1.e-07;-0.0;LOCKED
+"44";658;"dvbt";57.5;31.3;27.5;11.9;3.e-04;1.e-07;-0.0;LOCKED
+
+"Testpoint";"Channel plan";"Date / hour"
+"Bajos";"Sat jfbarril";"04-03-26 15:24:12"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"CH 1";10726;"dvbs2";78.9;15.8;12.5;4.5;5.e-03;1.e-07;772.0;LOCKED
+"CH 14";11399;"dvbs2";73.9;12.8;13.8;5.8;2.e-03;1.e-07;-487.0;LOCKED
+"CH 19";11668;"dvbs2";71.0;10.8;11.7;5.0;1.e-02;1.e-07;266.0;LOCKED
+
+
+

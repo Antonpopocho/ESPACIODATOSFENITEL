@@ -1012,6 +1012,12 @@ async def get_catalog():
     }
     return catalog
 
+@api_router.get("/datasets/catalog/full", response_model=List[DatasetResponse])
+async def get_full_catalog(user: dict = Depends(get_current_user)):
+    """Get all published datasets with full information for catalog view"""
+    datasets = await db.datasets.find({"status": "published"}, {"_id": 0}).to_list(1000)
+    return [DatasetResponse(**d) for d in datasets]
+
 @api_router.put("/datasets/{dataset_id}/validate")
 async def validate_dataset(dataset_id: str, request: Request, user: dict = Depends(require_promotor)):
     dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
@@ -1178,6 +1184,39 @@ async def publish_dataset(dataset_id: str, request: Request, user: dict = Depend
                    {"certificate_type": "dataset_publication", "hash": signature_hash, "dataset_id": dataset_id})
     
     return {"message": "Dataset publicado", "evidence_id": evidence_id, "certificate_hash": signature_hash}
+
+@api_router.put("/datasets/{dataset_id}/category")
+async def update_dataset_category(
+    dataset_id: str, 
+    request: Request,
+    category: str = Form(...),
+    user: dict = Depends(require_promotor)
+):
+    """Update dataset category - Promotor only"""
+    valid_categories = ["UTP", "ICT", "FM", "SAT", "general"]
+    if category not in valid_categories:
+        raise HTTPException(status_code=400, detail=f"Categoría inválida. Opciones: {', '.join(valid_categories)}")
+    
+    dataset = await db.datasets.find_one({"id": dataset_id}, {"_id": 0})
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset no encontrado")
+    
+    now = datetime.now(timezone.utc)
+    
+    # Update category in main dataset and DCAT metadata
+    await db.datasets.update_one(
+        {"id": dataset_id},
+        {"$set": {
+            "category": category,
+            "dcat_metadata.theme": category,
+            "updated_at": now.isoformat()
+        }}
+    )
+    
+    await log_audit(request, user["id"], user["email"], "UPDATE_DATASET_CATEGORY", "dataset", dataset_id,
+                   {"old_category": dataset.get("category"), "new_category": category})
+    
+    return {"message": "Categoría actualizada", "category": category}
 
 @api_router.get("/datasets/{dataset_id}/download")
 async def download_dataset(dataset_id: str, user: dict = Depends(get_current_user)):
