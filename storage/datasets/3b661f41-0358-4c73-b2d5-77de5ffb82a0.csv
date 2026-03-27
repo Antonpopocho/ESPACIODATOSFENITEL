@@ -1,0 +1,17 @@
+
+"Equipment name";"Equipment SN";"Company";"Technician";"Date"
+"ATLaS NG 6G";"010178548";"";"";"01-01-70"
+
+"Report name";"Customer";"Notes"
+"SAT";"";""
+
+"Testpoint";"Channel plan";"Date / hour"
+"Satelite";"Sat jfbarril";"04-03-26 15:29:53"
+
+"Channel";"MHz";"Signal";"Power(dBµV)";"CN(dB)";"MER(dB)";"LM(dB)";"CBER";"LBER / VBER";"Offset(kHz)";"Status"
+"CH 1";10726;"dvbs2";78.7;16.7;12.4;4.4;5.e-03;1.e-07;768.0;LOCKED
+"CH 14";11399;"dvbs2";74.0;12.9;13.8;5.8;2.e-03;1.e-07;-490.0;LOCKED
+"CH 19";11668;"dvbs2";72.0;11.4;11.6;4.9;1.e-02;1.e-07;262.0;LOCKED
+
+
+
