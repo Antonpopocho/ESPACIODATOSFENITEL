@@ -2096,6 +2096,17 @@ async def download_diagrama_flujo(user: dict = Depends(require_promotor)):
 
 # ==================== STATS ROUTES ====================
 
+@api_router.get("/stats/public")
+async def get_public_stats():
+    """Public statistics for landing page - no authentication required"""
+    total_members = await db.users.count_documents({"role": {"$ne": UserRole.PROMOTOR}})
+    published_datasets = await db.datasets.count_documents({"status": "published"})
+    
+    return {
+        "empresas_asociadas": total_members,
+        "datasets_publicados": published_datasets
+    }
+
 @api_router.get("/stats")
 async def get_stats(user: dict = Depends(require_promotor)):
     total_members = await db.users.count_documents({"role": {"$ne": UserRole.PROMOTOR}})
