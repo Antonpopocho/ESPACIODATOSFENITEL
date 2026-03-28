@@ -237,8 +237,8 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-wrap justify-center gap-4">
             <a 
-              href="/docs/modelo-gobernanza.pdf" 
-              target="_blank"
+              href="/docs/Gobernanza_Espacio_Datos_FENITEL.docx" 
+              download
               className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-lg hover:shadow-md transition-shadow"
             >
               <FileText className="w-5 h-5 text-link-blue" />
@@ -255,12 +255,12 @@ export default function LandingPage() {
               <Download className="w-4 h-4 text-slate-400" />
             </a>
             <a 
-              href="/docs/modelo-datos.pdf" 
-              target="_blank"
+              href="/docs/01_Diseno_Modelo_Gobernanza.docx" 
+              download
               className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-lg hover:shadow-md transition-shadow"
             >
               <FileText className="w-5 h-5 text-link-blue" />
-              <span className="font-medium text-telecom-navy">Modelo de Datos</span>
+              <span className="font-medium text-telecom-navy">Diseño del Modelo</span>
               <Download className="w-4 h-4 text-slate-400" />
             </a>
           </div>
