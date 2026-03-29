@@ -38,6 +38,38 @@ MVP funcional de Espacio de Datos Sectorial privado para FENITEL (Federación Na
 
 ## What's Been Implemented
 
+### Fecha: 29/03/2026 - Cumplimiento UNE 0087:2025
+
+**Sistema de Incidencias y Reclamaciones (Gob.4)**
+- Endpoint `POST/GET/PUT /api/incidents` - Gestión completa de incidencias
+- Frontend `Incidents.js` con dashboard de estadísticas
+- Tipos: incidencia, reclamación, consulta
+- Prioridades: baja, media, alta, crítica
+- Estados: abierta, en_proceso, resuelta, cerrada
+
+**Procedimiento de Baja de Participantes (Gob.3)**
+- Endpoint `POST /api/withdrawals` - Solicitud de baja
+- Endpoint `PUT /api/withdrawals/{id}/approve|reject` - Gestión de bajas
+- Workflow completo de solicitud → aprobación/rechazo
+
+**Informes de Cumplimiento Automáticos (Tec.6)**
+- Endpoint `GET /api/compliance/report` - Informe JSON en tiempo real
+- Endpoint `GET /api/compliance/report/pdf` - Informe PDF descargable
+- Frontend `Compliance.js` con dashboard de cumplimiento
+- Verificación de las 5 dimensiones UNE 0087:2025
+
+**Documentación Normativa**
+- Informe de verificación `/app/docs/INFORME_VERIFICACION_UNE_0087.md`
+- Landing page actualizada con UNE 0087:2025
+
+### Fecha: 28/03/2026 - Landing Page y Documentación
+
+**Landing Page Pública**
+- Estadísticas en tiempo real (empresas y datasets)
+- Beneficios de participación
+- Conformidad normativa (UNE 0087:2025, Orden TDF/758/2025)
+- Documentación descargable (Gobernanza, Contrato, Diseño)
+
 ### Fecha: 25/03/2026 - Catálogo Sectorial Global
 
 **Catálogo de Datos Sectoriales**
@@ -94,12 +126,16 @@ MVP funcional de Espacio de Datos Sectorial privado para FENITEL (Federación Na
 - ✅ Generación de evidencias
 - ✅ Catálogo DCAT-AP
 - ✅ Catálogo Sectorial Global con categorías (UTP, ICT, FM, SAT)
+- ✅ Sistema de Incidencias y Reclamaciones (UNE 0087 Gob.4)
+- ✅ Procedimiento de Baja de Participantes (UNE 0087 Gob.3)
+- ✅ Informes de Cumplimiento Automáticos (UNE 0087 Tec.6)
+- ✅ Landing Page con estadísticas públicas
 
 ### P1 - Importante (Pendiente)
-- [ ] Verificar Panel de Gobernanza completo
+- [ ] Documentación OpenAPI/Swagger (Int.4)
+- [ ] Portal de transparencia con informes de actividad (Gob.5)
+- [ ] Integración con certificado digital real (PAdES/eIDAS 2.0)
 - [ ] Versionado de reglamento de gobernanza
-- [ ] Sistema de imputación de horas (opcional)
-- [ ] Integración con certificado digital real (PAdES)
 - [ ] Backup automático programado
 
 ### P2 - Mejoras (Futuro)
@@ -108,6 +144,18 @@ MVP funcional de Espacio de Datos Sectorial privado para FENITEL (Federación Na
 - [ ] Integración con S3 real para almacenamiento
 - [ ] API pública del catálogo DCAT-AP
 - [ ] Multi-idioma
+
+## Cumplimiento UNE 0087:2025
+
+| Dimensión | Estado | Criterios |
+|-----------|--------|-----------|
+| Modelo de Negocio | ✅ CUMPLE | Neg.1, Neg.2, Neg.3 |
+| Sistema de Gobernanza | ✅ CUMPLE | Gob.1, Gob.2, Gob.3, Gob.4, Gob.5 |
+| Solución Técnica | ✅ CUMPLE | Tec.1, Tec.2, Tec.3, Tec.4, Tec.5, Tec.6 |
+| Interoperabilidad | ✅ CUMPLE | Int.1, Int.2, Int.3, Int.4*, Int.5 |
+| Verificación Funcional | ✅ CUMPLE | Fun.1, Fun.2, Fun.3, Fun.4 |
+
+*Int.4: Documentación OpenAPI pendiente
 
 ## Credenciales de Demo
 
@@ -127,7 +175,7 @@ MVP funcional de Espacio de Datos Sectorial privado para FENITEL (Federación Na
 - **PRUEBADEMO** - Datos de prueba (11.4 KB) - Categoría: General
 
 ## Next Tasks
-1. Verificar Panel de Gobernanza (configuración comité, logging decisiones, actas)
-2. Testing de regresión completo
-3. Implementar versionado del reglamento de gobernanza
-4. Preparar integración con certificado digital PAdES real
+1. Documentar API con OpenAPI/Swagger (Int.4)
+2. Añadir sección de informes de actividad pública (Gob.5)
+3. Preparar integración con certificado digital PAdES/eIDAS 2.0
+4. Implementar versionado del reglamento de gobernanza

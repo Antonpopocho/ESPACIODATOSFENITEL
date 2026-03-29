@@ -15,7 +15,9 @@ import {
   X,
   ChevronDown,
   CreditCard,
-  BookOpen
+  BookOpen,
+  AlertCircle,
+  Scale
 } from 'lucide-react';
 import { Button } from './ui/button';
 import {
@@ -32,7 +34,9 @@ const promotorMenuItems = [
   { path: '/payments', icon: CreditCard, label: 'Pagos' },
   { path: '/datasets', icon: Database, label: 'Datasets' },
   { path: '/catalog', icon: Database, label: 'Catálogo Sectorial' },
+  { path: '/incidents', icon: AlertCircle, label: 'Incidencias' },
   { path: '/governance', icon: Shield, label: 'Gobernanza' },
+  { path: '/compliance', icon: Scale, label: 'Cumplimiento UNE' },
   { path: '/audit', icon: ClipboardList, label: 'Auditoría' },
   { path: '/documentation', icon: BookOpen, label: 'Documentación' },
 ];
@@ -43,6 +47,7 @@ const memberMenuItems = [
   { path: '/my-datasets', icon: Database, label: 'Mis Datasets' },
   { path: '/my-evidence', icon: FileCheck, label: 'Mis Evidencias' },
   { path: '/catalog', icon: Database, label: 'Catálogo Sectorial' },
+  { path: '/incidents', icon: AlertCircle, label: 'Incidencias' },
 ];
 
 export default function Layout({ children }) {

@@ -17,6 +17,8 @@ import Catalog from './pages/Catalog';
 import Governance from './pages/Governance';
 import Audit from './pages/Audit';
 import Documentation from './pages/Documentation';
+import Incidents from './pages/Incidents';
+import Compliance from './pages/Compliance';
 import { Loader2 } from 'lucide-react';
 
 // Protected Route Component
@@ -77,6 +79,7 @@ function AppRoutes() {
       <Route path="/my-datasets" element={<ProtectedRoute><MyDatasets /></ProtectedRoute>} />
       <Route path="/my-evidence" element={<ProtectedRoute><MyEvidence /></ProtectedRoute>} />
       <Route path="/catalog" element={<ProtectedRoute><Catalog /></ProtectedRoute>} />
+      <Route path="/incidents" element={<ProtectedRoute><Incidents /></ProtectedRoute>} />
 
       {/* Protected Routes - Promotor Only */}
       <Route path="/members" element={<ProtectedRoute requirePromotor><Members /></ProtectedRoute>} />
@@ -84,6 +87,7 @@ function AppRoutes() {
       <Route path="/datasets" element={<ProtectedRoute requirePromotor><Datasets /></ProtectedRoute>} />
       <Route path="/governance" element={<ProtectedRoute requirePromotor><Governance /></ProtectedRoute>} />
       <Route path="/audit" element={<ProtectedRoute requirePromotor><Audit /></ProtectedRoute>} />
+      <Route path="/compliance" element={<ProtectedRoute requirePromotor><Compliance /></ProtectedRoute>} />
       <Route path="/documentation" element={<ProtectedRoute requirePromotor><Documentation /></ProtectedRoute>} />
 
       {/* Fallback */}

@@ -183,10 +183,21 @@ export default function LandingPage() {
             </h3>
             <p className="text-slate-600 max-w-2xl mx-auto">
               Este espacio de datos cumple con los requisitos establecidos en la 
-              normativa española para espacios de datos sectoriales.
+              normativa española y europea para espacios de datos sectoriales.
             </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            <Card className="border-slate-200 bg-white">
+              <CardContent className="p-6 text-center">
+                <Scale className="w-10 h-10 text-link-blue mx-auto mb-3" />
+                <h4 className="font-outfit font-semibold text-telecom-navy mb-2">
+                  UNE 0087:2025
+                </h4>
+                <p className="text-sm text-slate-600">
+                  Definici&oacute;n y caracterizaci&oacute;n de Espacios de Datos
+                </p>
+              </CardContent>
+            </Card>
             <Card className="border-slate-200 bg-white">
               <CardContent className="p-6 text-center">
                 <Scale className="w-10 h-10 text-link-blue mx-auto mb-3" />
@@ -194,7 +205,7 @@ export default function LandingPage() {
                   Orden TDF/758/2025
                 </h4>
                 <p className="text-sm text-slate-600">
-                  Kit de Espacios de Datos
+                  Lista de Confianza de Espacios de Datos
                 </p>
               </CardContent>
             </Card>
@@ -205,7 +216,7 @@ export default function LandingPage() {
                   Datos protegidos
                 </h4>
                 <p className="text-sm text-slate-600">
-                  Acceso exclusivo asociados
+                  Acceso exclusivo asociados FENITEL
                 </p>
               </CardContent>
             </Card>
@@ -216,7 +227,7 @@ export default function LandingPage() {
                   Evidencias firmadas
                 </h4>
                 <p className="text-sm text-slate-600">
-                  Trazabilidad completa
+                  Trazabilidad completa DCAT-AP
                 </p>
               </CardContent>
             </Card>

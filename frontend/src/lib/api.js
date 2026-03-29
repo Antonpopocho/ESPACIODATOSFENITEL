@@ -120,4 +120,32 @@ export const docsApi = {
   downloadDiagramaFlujo: () => api.get('/docs/diagrama-flujo', { responseType: 'blob' }),
 };
 
+// Incidents (UNE 0087:2025)
+export const incidentsApi = {
+  list: () => api.get('/incidents'),
+  get: (id) => api.get(`/incidents/${id}`),
+  create: (data) => api.post('/incidents', data),
+  update: (id, data) => api.put(`/incidents/${id}`, data),
+};
+
+// Withdrawals (UNE 0087:2025)
+export const withdrawalsApi = {
+  list: () => api.get('/withdrawals'),
+  request: (data) => api.post('/withdrawals', data),
+  approve: (id) => api.put(`/withdrawals/${id}/approve`),
+  reject: (id, reason) => {
+    const formData = new FormData();
+    formData.append('reason', reason);
+    return api.put(`/withdrawals/${id}/reject`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+};
+
+// Compliance (UNE 0087:2025)
+export const complianceApi = {
+  getReport: () => api.get('/compliance/report'),
+  downloadReportPdf: () => api.get('/compliance/report/pdf', { responseType: 'blob' }),
+};
+
 export default api;
