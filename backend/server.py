@@ -2536,6 +2536,40 @@ async def download_diagram(filename: str):
         filename=filename
     )
 
+# ==================== SCREENSHOTS ENDPOINTS ====================
+
+SCREENSHOTS_DIR = Path("/app/storage/screenshots")
+
+@api_router.get("/screenshots")
+async def list_screenshots():
+    """Lista todas las capturas de pantalla disponibles"""
+    if not SCREENSHOTS_DIR.exists():
+        return {"screenshots": []}
+    
+    screenshots = []
+    for f in sorted(SCREENSHOTS_DIR.iterdir()):
+        if f.suffix.lower() == '.png':
+            screenshots.append({
+                "name": f.stem,
+                "filename": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "download_url": f"/api/screenshots/{f.name}"
+            })
+    return {"screenshots": screenshots}
+
+@api_router.get("/screenshots/{filename}")
+async def download_screenshot(filename: str):
+    """Descarga una captura de pantalla"""
+    file_path = SCREENSHOTS_DIR / filename
+    if not file_path.exists() or not file_path.suffix.lower() == '.png':
+        raise HTTPException(status_code=404, detail="Captura no encontrada")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/png",
+        filename=filename
+    )
+
 # Include router and middleware
 app.include_router(api_router)
 
