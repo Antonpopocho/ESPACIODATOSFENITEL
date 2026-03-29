@@ -174,6 +174,14 @@ MVP funcional de Espacio de Datos Sectorial privado para FENITEL (Federación Na
 - **SAT** - Datos de comunicaciones por Satélite (0.5 KB)
 - **PRUEBADEMO** - Datos de prueba (11.4 KB) - Categoría: General
 
+## Changelog
+
+### Fecha: 29/03/2026 - Diagramas de Arquitectura
+- Generador de diagramas PNG profesionales (`/app/scripts/generate_architecture_diagrams.py`)
+- Endpoint `GET /api/diagrams` - Lista diagramas disponibles
+- Endpoint `GET /api/diagrams/{filename}` - Descarga diagrama PNG
+- 5 diagramas generados: Arquitectura Sistema, Flujo Incorporación, Modelo Datos, Cumplimiento UNE, Stack Tecnológico
+
 ## Next Tasks
 1. Documentar API con OpenAPI/Swagger (Int.4)
 2. Añadir sección de informes de actividad pública (Gob.5)

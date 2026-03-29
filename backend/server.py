@@ -2502,6 +2502,40 @@ async def get_stats(user: dict = Depends(require_promotor)):
 async def root():
     return {"message": "FENITEL Espacio de Datos API", "version": "1.0.0"}
 
+# ==================== DIAGRAMS ENDPOINTS ====================
+
+DIAGRAMS_DIR = Path("/app/storage/diagrams")
+
+@api_router.get("/diagrams")
+async def list_diagrams():
+    """Lista todos los diagramas de arquitectura disponibles"""
+    if not DIAGRAMS_DIR.exists():
+        return {"diagrams": []}
+    
+    diagrams = []
+    for f in sorted(DIAGRAMS_DIR.iterdir()):
+        if f.suffix.lower() == '.png':
+            diagrams.append({
+                "name": f.stem,
+                "filename": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "download_url": f"/api/diagrams/{f.name}"
+            })
+    return {"diagrams": diagrams}
+
+@api_router.get("/diagrams/{filename}")
+async def download_diagram(filename: str):
+    """Descarga un diagrama de arquitectura"""
+    file_path = DIAGRAMS_DIR / filename
+    if not file_path.exists() or not file_path.suffix.lower() == '.png':
+        raise HTTPException(status_code=404, detail="Diagrama no encontrado")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/png",
+        filename=filename
+    )
+
 # Include router and middleware
 app.include_router(api_router)
 
