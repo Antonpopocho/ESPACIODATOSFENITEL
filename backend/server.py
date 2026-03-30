@@ -2560,7 +2560,49 @@ async def list_screenshots():
 @api_router.get("/screenshots/{filename}")
 async def download_screenshot(filename: str):
     """Descarga una captura de pantalla"""
+    # Verificar si es una solicitud de catálogo
+    if filename == "catalogo":
+        return await list_catalog_screenshots_internal()
+    
     file_path = SCREENSHOTS_DIR / filename
+    if not file_path.exists() or not file_path.suffix.lower() == '.png':
+        raise HTTPException(status_code=404, detail="Captura no encontrada")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/png",
+        filename=filename
+    )
+
+# ==================== CATALOG SCREENSHOTS ENDPOINTS ====================
+
+CATALOG_SCREENSHOTS_DIR = Path("/app/storage/screenshots/catalogo")
+
+async def list_catalog_screenshots_internal():
+    """Lista todas las capturas del catálogo disponibles"""
+    if not CATALOG_SCREENSHOTS_DIR.exists():
+        return {"screenshots": []}
+    
+    screenshots = []
+    for f in sorted(CATALOG_SCREENSHOTS_DIR.iterdir()):
+        if f.suffix.lower() == '.png':
+            screenshots.append({
+                "name": f.stem,
+                "filename": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "download_url": f"/api/screenshots/catalogo/{f.name}"
+            })
+    return {"screenshots": screenshots}
+
+@api_router.get("/catalog-screenshots")
+async def list_catalog_screenshots():
+    """Lista todas las capturas del catálogo disponibles"""
+    return await list_catalog_screenshots_internal()
+
+@api_router.get("/catalog-screenshots/{filename}")
+async def download_catalog_screenshot(filename: str):
+    """Descarga una captura del catálogo"""
+    file_path = CATALOG_SCREENSHOTS_DIR / filename
     if not file_path.exists() or not file_path.suffix.lower() == '.png':
         raise HTTPException(status_code=404, detail="Captura no encontrada")
     
