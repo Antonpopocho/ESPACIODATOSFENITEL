@@ -2646,6 +2646,40 @@ async def download_publication_screenshot(filename: str):
         filename=filename
     )
 
+# ==================== TRANSACTION SCREENSHOTS ENDPOINTS ====================
+
+TRANSACTION_SCREENSHOTS_DIR = Path("/app/storage/screenshots/transaccion")
+
+@api_router.get("/transaction-screenshots")
+async def list_transaction_screenshots():
+    """Lista todas las capturas de transacción disponibles"""
+    if not TRANSACTION_SCREENSHOTS_DIR.exists():
+        return {"screenshots": []}
+    
+    screenshots = []
+    for f in sorted(TRANSACTION_SCREENSHOTS_DIR.iterdir()):
+        if f.suffix.lower() == '.png':
+            screenshots.append({
+                "name": f.stem,
+                "filename": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "download_url": f"/api/transaction-screenshots/{f.name}"
+            })
+    return {"screenshots": screenshots}
+
+@api_router.get("/transaction-screenshots/{filename}")
+async def download_transaction_screenshot(filename: str):
+    """Descarga una captura de transacción"""
+    file_path = TRANSACTION_SCREENSHOTS_DIR / filename
+    if not file_path.exists() or not file_path.suffix.lower() == '.png':
+        raise HTTPException(status_code=404, detail="Captura no encontrada")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/png",
+        filename=filename
+    )
+
 # Include router and middleware
 app.include_router(api_router)
 
