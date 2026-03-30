@@ -2612,6 +2612,40 @@ async def download_catalog_screenshot(filename: str):
         filename=filename
     )
 
+# ==================== PUBLICATION SCREENSHOTS ENDPOINTS ====================
+
+PUBLICATION_SCREENSHOTS_DIR = Path("/app/storage/screenshots/publicacion")
+
+@api_router.get("/publication-screenshots")
+async def list_publication_screenshots():
+    """Lista todas las capturas de publicación disponibles"""
+    if not PUBLICATION_SCREENSHOTS_DIR.exists():
+        return {"screenshots": []}
+    
+    screenshots = []
+    for f in sorted(PUBLICATION_SCREENSHOTS_DIR.iterdir()):
+        if f.suffix.lower() == '.png':
+            screenshots.append({
+                "name": f.stem,
+                "filename": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "download_url": f"/api/publication-screenshots/{f.name}"
+            })
+    return {"screenshots": screenshots}
+
+@api_router.get("/publication-screenshots/{filename}")
+async def download_publication_screenshot(filename: str):
+    """Descarga una captura de publicación"""
+    file_path = PUBLICATION_SCREENSHOTS_DIR / filename
+    if not file_path.exists() or not file_path.suffix.lower() == '.png':
+        raise HTTPException(status_code=404, detail="Captura no encontrada")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/png",
+        filename=filename
+    )
+
 # Include router and middleware
 app.include_router(api_router)
 
