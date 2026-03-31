@@ -512,8 +512,9 @@ async def register(request: Request, user_data: UserCreate):
     await db.contracts.insert_one(contract)
     
     # Store evidence record
+    evidence_id = str(uuid.uuid4())
     evidence_record = {
-        "id": str(uuid.uuid4()),
+        "id": evidence_id,
         "user_id": user_id,
         "evidence_type": "membership_registration",
         "hash": cert_hash,
@@ -529,11 +530,18 @@ async def register(request: Request, user_data: UserCreate):
     }
     await db.evidence.insert_one(evidence_record)
     
+    # Vincular la evidencia con el usuario (FIX: esto faltaba)
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"identity_evidence_id": evidence_id}}
+    )
+    user["identity_evidence_id"] = evidence_id
+    
     await log_audit(request, user_id, user_data.email, "MEMBER_REGISTRATION", "member", user_id, 
                    {"role": user_data.role, "organization": user_data.organization, 
                     "certificate_hash": cert_hash, "contract_reference": contract_reference})
     
-    await log_audit(request, user_id, user_data.email, "CERTIFICATE_GENERATION", "evidence", evidence_record["id"],
+    await log_audit(request, user_id, user_data.email, "CERTIFICATE_GENERATION", "evidence", evidence_id,
                    {"certificate_type": "membership_registration", "hash": cert_hash})
     
     user.pop("password_hash", None)
@@ -745,12 +753,35 @@ async def sign_contract(request: Request, user: dict = Depends(get_current_user)
         }}
     )
     
+    # Determinar el siguiente estado de incorporación
+    next_status = IncorporationStatus.PENDING_PAYMENT
+    
+    # Si ya tiene pago confirmado, verificar si puede pasar a EFFECTIVE
+    if user.get("payment_status") == "paid":
+        if user.get("identity_evidence_id"):
+            next_status = IncorporationStatus.EFFECTIVE
+        else:
+            # Buscar si existe evidencia pero no está vinculada
+            existing_evidence = await db.evidence.find_one({
+                "user_id": user["id"],
+                "evidence_type": {"$in": ["membership_registration", "identity"]}
+            }, {"_id": 0})
+            
+            if existing_evidence:
+                # Vincular evidencia existente y pasar a EFFECTIVE
+                await db.users.update_one({"id": user["id"]}, {"$set": {
+                    "identity_evidence_id": existing_evidence["id"]
+                }})
+                next_status = IncorporationStatus.EFFECTIVE
+            else:
+                next_status = IncorporationStatus.PENDING_IDENTITY
+    
     # Update user status
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {
             "contract_signed": True,
-            "incorporation_status": IncorporationStatus.PENDING_PAYMENT
+            "incorporation_status": next_status
         }}
     )
     
@@ -824,7 +855,26 @@ async def update_payment(user_id: str, payment: PaymentUpdate, request: Request,
     
     # Check if should update incorporation status
     if payment.status == "paid" and member.get("contract_signed"):
-        await db.users.update_one({"id": user_id}, {"$set": {"incorporation_status": IncorporationStatus.PENDING_IDENTITY}})
+        # Verificar si ya tiene evidencia de identidad vinculada
+        if member.get("identity_evidence_id"):
+            # Ya tiene evidencia, pasar directamente a EFFECTIVE
+            await db.users.update_one({"id": user_id}, {"$set": {"incorporation_status": IncorporationStatus.EFFECTIVE}})
+        else:
+            # Buscar si existe evidencia pero no está vinculada
+            existing_evidence = await db.evidence.find_one({
+                "user_id": user_id,
+                "evidence_type": {"$in": ["membership_registration", "identity"]}
+            }, {"_id": 0})
+            
+            if existing_evidence:
+                # Vincular evidencia existente y pasar a EFFECTIVE
+                await db.users.update_one({"id": user_id}, {"$set": {
+                    "identity_evidence_id": existing_evidence["id"],
+                    "incorporation_status": IncorporationStatus.EFFECTIVE
+                }})
+            else:
+                # No hay evidencia, quedarse en PENDING_IDENTITY
+                await db.users.update_one({"id": user_id}, {"$set": {"incorporation_status": IncorporationStatus.PENDING_IDENTITY}})
     
     await log_audit(request, user["id"], user["email"], "UPDATE_PAYMENT", "payment", user_id,
                    {"status": payment.status, "amount": payment.amount})
