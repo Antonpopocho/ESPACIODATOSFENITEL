@@ -25,6 +25,9 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import certificate service
 from services.certificate_service import (
@@ -56,12 +59,19 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'fenitel-data-space-secret-key-2025')
+# JWT Configuration - SEGURIDAD: Sin valor por defecto, debe estar en .env
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET debe estar configurado en el archivo .env")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# Rate Limiter Configuration
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="FENITEL Espacio de Datos", version="1.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
@@ -442,6 +452,7 @@ async def generate_evidence_pdf(evidence_type: str, user_data: dict, metadata: d
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register", response_model=UserResponse)
+@limiter.limit("5/minute")
 async def register(request: Request, user_data: UserCreate):
     existing = await db.users.find_one({"email": user_data.email}, {"_id": 0})
     if existing:
@@ -548,6 +559,7 @@ async def register(request: Request, user_data: UserCreate):
     return UserResponse(**user)
 
 @api_router.post("/auth/login")
+@limiter.limit("10/minute")
 async def login(request: Request, credentials: UserLogin):
     user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
     if not user or not verify_password(credentials.password, user["password_hash"]):
@@ -963,6 +975,7 @@ async def get_user_evidence(user_id: str, user: dict = Depends(get_current_user)
 # ==================== DATASETS ROUTES ====================
 
 @api_router.post("/datasets", response_model=DatasetResponse)
+@limiter.limit("20/minute")
 async def upload_dataset(
     request: Request,
     title: str = Form(...),
@@ -2195,6 +2208,7 @@ async def download_diagrama_flujo(user: dict = Depends(require_promotor)):
 # ==================== INCIDENTS/CLAIMS ROUTES (UNE 0087:2025 - Gob.4) ====================
 
 @api_router.post("/incidents", response_model=IncidentResponse)
+@limiter.limit("10/minute")
 async def create_incident(incident: IncidentCreate, request: Request, user: dict = Depends(get_current_user)):
     """Create a new incident or claim"""
     now = datetime.now(timezone.utc)
