@@ -99,6 +99,7 @@ export const governanceApi = {
   removeCommitteeMember: (id) => api.delete(`/governance/committee/${id}`),
   listDecisions: () => api.get('/governance/decisions'),
   createDecision: (data) => api.post('/governance/decisions', data),
+  listDocuments: () => api.get('/governance/documents'),
 };
 
 // Export

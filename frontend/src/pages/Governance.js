@@ -28,7 +28,10 @@ import {
   Loader2,
   Trash2,
   UserPlus,
-  BookOpen
+  BookOpen,
+  Download,
+  CheckCircle,
+  FileSignature
 } from 'lucide-react';
 import { formatDate, formatDateTime } from '../lib/utils';
 import { toast } from 'sonner';
@@ -37,6 +40,7 @@ export default function Governance() {
   const [committee, setCommittee] = useState([]);
   const [decisions, setDecisions] = useState([]);
   const [members, setMembers] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [addDecisionOpen, setAddDecisionOpen] = useState(false);
@@ -56,14 +60,16 @@ export default function Governance() {
 
   const fetchData = async () => {
     try {
-      const [committeeRes, decisionsRes, membersRes] = await Promise.all([
+      const [committeeRes, decisionsRes, membersRes, documentsRes] = await Promise.all([
         governanceApi.listCommittee(),
         governanceApi.listDecisions(),
         membersApi.list(),
+        governanceApi.listDocuments(),
       ]);
       setCommittee(committeeRes.data);
       setDecisions(decisionsRes.data);
       setMembers(membersRes.data);
+      setDocuments(documentsRes.data);
     } catch (error) {
       console.error('Error fetching governance data:', error);
     } finally {
@@ -136,8 +142,12 @@ export default function Governance() {
         <p className="text-slate-500 mt-1">Gestión del comité y decisiones del Espacio de Datos</p>
       </div>
 
-      <Tabs defaultValue="committee" className="space-y-6">
+      <Tabs defaultValue="documents" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="documents" data-testid="tab-documents">
+            <FileSignature className="w-4 h-4 mr-2" />
+            Documentos Oficiales
+          </TabsTrigger>
           <TabsTrigger value="committee" data-testid="tab-committee">
             <Users className="w-4 h-4 mr-2" />
             Comité
@@ -147,6 +157,83 @@ export default function Governance() {
             Decisiones
           </TabsTrigger>
         </TabsList>
+
+        {/* Documents Tab */}
+        <TabsContent value="documents">
+          <Card className="border-slate-200">
+            <CardHeader>
+              <div>
+                <CardTitle className="font-outfit flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-link-blue" />
+                  Documentos de Gobernanza
+                </CardTitle>
+                <CardDescription>
+                  Documentos oficiales firmados digitalmente que constituyen el marco normativo del Espacio de Datos
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-link-blue" />
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                  <p className="text-slate-500">No hay documentos de gobernanza disponibles</p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {documents.map((doc) => (
+                    <div 
+                      key={doc.id}
+                      className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white border border-slate-200 rounded-lg hover:shadow-md transition-shadow"
+                      data-testid={`governance-doc-${doc.id}`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-link-blue/10 flex items-center justify-center">
+                          <FileSignature className="w-6 h-6 text-link-blue" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-slate-800">{doc.title}</h4>
+                          <p className="text-sm text-slate-500 mt-1">{doc.description}</p>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Firmado digitalmente
+                            </span>
+                            <span className="text-xs text-slate-400 capitalize">
+                              {doc.category}
+                            </span>
+                            {doc.file_size > 0 && (
+                              <span className="text-xs text-slate-400">
+                                {(doc.file_size / 1024).toFixed(0)} KB
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={!doc.available}
+                        onClick={() => {
+                          const token = localStorage.getItem('token');
+                          window.open(`${process.env.REACT_APP_BACKEND_URL}${doc.download_url}`, '_blank');
+                        }}
+                        data-testid={`download-doc-${doc.id}`}
+                      >
+                        <Download className="w-4 h-4" />
+                        Descargar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Committee Tab */}
         <TabsContent value="committee">

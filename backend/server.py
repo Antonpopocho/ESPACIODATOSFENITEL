@@ -49,9 +49,10 @@ EVIDENCE_DIR = STORAGE_DIR / "evidence"
 EXPORTS_DIR = STORAGE_DIR / "exports"
 MEMBERSHIP_EVIDENCE_DIR = STORAGE_DIR / "evidences" / "membership"
 DATASET_EVIDENCE_DIR = STORAGE_DIR / "evidences" / "datasets"
+GOVERNANCE_DIR = STORAGE_DIR / "governance"
 
 # Create directories
-for d in [DATASETS_DIR, CONTRACTS_DIR, EVIDENCE_DIR, EXPORTS_DIR, MEMBERSHIP_EVIDENCE_DIR, DATASET_EVIDENCE_DIR]:
+for d in [DATASETS_DIR, CONTRACTS_DIR, EVIDENCE_DIR, EXPORTS_DIR, MEMBERSHIP_EVIDENCE_DIR, DATASET_EVIDENCE_DIR, GOVERNANCE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # MongoDB connection
@@ -1420,6 +1421,74 @@ async def export_audit_logs(user: dict = Depends(require_promotor)):
     )
 
 # ==================== GOVERNANCE ROUTES ====================
+
+# Governance documents configuration
+GOVERNANCE_DOCUMENTS = [
+    {
+        "id": "01_acta_aprobacion",
+        "title": "Acta de Aprobación del Espacio de Datos FENITEL",
+        "description": "Documento oficial de aprobación del Espacio de Datos Sectorial",
+        "filename": "01_Acta_Aprobacion_Espacio_Datos_FENITEL_signed.pdf",
+        "category": "constitucion",
+        "signed": True
+    },
+    {
+        "id": "02_nombramiento_responsables",
+        "title": "Nombramiento de Responsables del Espacio de Datos",
+        "description": "Designación oficial de los responsables de gestión y operación",
+        "filename": "02_Nombramiento_Responsables_Espacio_Datos_signed.pdf",
+        "category": "organizacion",
+        "signed": True
+    },
+    {
+        "id": "03_aprobacion_reglamento",
+        "title": "Aprobación del Reglamento del Espacio de Datos",
+        "description": "Reglamento interno que rige el funcionamiento del Espacio de Datos",
+        "filename": "03_Aprobacion_Reglamento_Espacio_Datos_signed.pdf",
+        "category": "normativa",
+        "signed": True
+    },
+    {
+        "id": "04_autorizacion_promotor",
+        "title": "Autorización del Promotor del Espacio de Datos",
+        "description": "Documento de autorización oficial del promotor FENITEL",
+        "filename": "04_Autorizacion_Promotor_Espacio_Datos_signed.pdf",
+        "category": "autorizacion",
+        "signed": True
+    }
+]
+
+@api_router.get("/governance/documents")
+async def list_governance_documents(user: dict = Depends(get_current_user)):
+    """List all governance documents"""
+    documents = []
+    for doc in GOVERNANCE_DOCUMENTS:
+        file_path = GOVERNANCE_DIR / doc["filename"]
+        exists = file_path.exists()
+        documents.append({
+            **doc,
+            "available": exists,
+            "file_size": file_path.stat().st_size if exists else 0,
+            "download_url": f"/api/governance/documents/{doc['id']}/download" if exists else None
+        })
+    return documents
+
+@api_router.get("/governance/documents/{doc_id}/download")
+async def download_governance_document(doc_id: str, user: dict = Depends(get_current_user)):
+    """Download a governance document"""
+    doc = next((d for d in GOVERNANCE_DOCUMENTS if d["id"] == doc_id), None)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    file_path = GOVERNANCE_DIR / doc["filename"]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no disponible")
+    
+    return FileResponse(
+        file_path, 
+        filename=doc["filename"], 
+        media_type="application/pdf"
+    )
 
 @api_router.get("/governance/committee", response_model=List[CommitteeMemberResponse])
 async def list_committee(user: dict = Depends(get_current_user)):
